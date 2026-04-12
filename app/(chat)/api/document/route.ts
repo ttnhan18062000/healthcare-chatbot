@@ -70,13 +70,7 @@ export async function POST(request: Request) {
   let kind: ArtifactKind;
   let isManualEdit: boolean | undefined;
 
-  try {
-    const parsed = documentSchema.parse(await request.json());
-    content = parsed.content;
-    title = parsed.title;
-    kind = parsed.kind;
-    isManualEdit = parsed.isManualEdit;
-  } catch {
+  } catch (error) {
     return new ChatbotError(
       "bad_request:api",
       "Invalid request body."

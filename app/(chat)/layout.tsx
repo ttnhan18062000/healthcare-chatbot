@@ -44,9 +44,9 @@ async function SidebarShell({ children }: { children: React.ReactNode }) {
         <Suspense fallback={<div className="flex h-dvh" />}>
           <ActiveChatProvider>
             <ChatShell />
+            {children}
           </ActiveChatProvider>
         </Suspense>
-        {children}
       </SidebarInset>
     </SidebarProvider>
   );

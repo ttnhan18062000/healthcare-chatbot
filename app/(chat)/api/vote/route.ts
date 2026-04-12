@@ -51,7 +51,7 @@ export async function PATCH(request: Request) {
     chatId = parsed.chatId;
     messageId = parsed.messageId;
     type = parsed.type;
-  } catch {
+  } catch (error) {
     return new ChatbotError(
       "bad_request:api",
       "Parameters chatId, messageId, and type are required."

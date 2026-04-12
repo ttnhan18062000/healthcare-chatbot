@@ -79,11 +79,15 @@ export async function saveChat({
   userId,
   title,
   visibility,
+  assistantId,
+  threadId,
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
+  assistantId?: string;
+  threadId?: string;
 }) {
   try {
     return await db.insert(chat).values({
@@ -92,6 +96,8 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      assistantId,
+      threadId,
     });
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to save chat");
@@ -241,7 +247,22 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
   try {
     return await db.insert(message).values(messages);
   } catch (_error) {
-    throw new ChatbotError("bad_request:database", "Failed to save messages");
+    throw new ChatbotError("bad_request:database", "Failed to save message");
+  }
+}
+
+export async function getDocumentsByExternalIds({
+  externalIds,
+}: {
+  externalIds: string[];
+}) {
+  try {
+    return await db
+      .select()
+      .from(document)
+      .where(inArray(document.externalId, externalIds));
+  } catch (_error) {
+    return [];
   }
 }
 
@@ -322,12 +343,14 @@ export async function saveDocument({
   kind,
   content,
   userId,
+  externalId,
 }: {
   id: string;
   title: string;
   kind: ArtifactKind;
   content: string;
   userId: string;
+  externalId?: string;
 }) {
   try {
     return await db
@@ -338,6 +361,7 @@ export async function saveDocument({
         kind,
         content,
         userId,
+        externalId,
         createdAt: new Date(),
       })
       .returning();
@@ -557,6 +581,28 @@ export async function updateChatTitleById({
     return await db.update(chat).set({ title }).where(eq(chat.id, chatId));
   } catch (_error) {
     return;
+  }
+}
+
+export async function updateChatAssistantDetails({
+  chatId,
+  assistantId,
+  threadId,
+}: {
+  chatId: string;
+  assistantId: string;
+  threadId: string;
+}) {
+  try {
+    return await db
+      .update(chat)
+      .set({ assistantId, threadId })
+      .where(eq(chat.id, chatId));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to update chat assistant details"
+    );
   }
 }
 

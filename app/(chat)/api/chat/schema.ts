@@ -7,7 +7,7 @@ const textPartSchema = z.object({
 
 const filePartSchema = z.object({
   type: z.enum(["file"]),
-  mediaType: z.enum(["image/jpeg", "image/png"]),
+  mediaType: z.string(),
   name: z.string().min(1).max(100),
   url: z.string().url(),
 });
@@ -15,7 +15,7 @@ const filePartSchema = z.object({
 const partSchema = z.union([textPartSchema, filePartSchema]);
 
 const userMessageSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   role: z.enum(["user"]),
   parts: z.array(partSchema),
 });
@@ -27,11 +27,12 @@ const toolApprovalMessageSchema = z.object({
 });
 
 export const postRequestBodySchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   message: userMessageSchema.optional(),
   messages: z.array(toolApprovalMessageSchema).optional(),
-  selectedChatModel: z.string(),
-  selectedVisibilityType: z.enum(["public", "private"]),
+  selectedChatModel: z.string().optional(),
+  selectedVisibilityType: z.enum(["public", "private"]).optional(),
+  mode: z.enum(["normal", "rag"]).optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

@@ -1,14 +1,13 @@
 "use client";
 
-import type { UseChatHelpers } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
 import {
   createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -17,26 +16,27 @@ import {
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
-import { useDataStream } from "@/components/chat/data-stream-provider";
 import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
 import { toast } from "@/components/chat/toast";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
-import { useAutoResume } from "@/hooks/use-auto-resume";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import type { Vote } from "@/lib/db/schema";
-import { ChatbotError } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
-import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
+import { fetcher, generateUUID } from "@/lib/utils";
 
 type ActiveChatContextValue = {
   chatId: string;
   messages: ChatMessage[];
-  setMessages: UseChatHelpers<ChatMessage>["setMessages"];
-  sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
-  status: UseChatHelpers<ChatMessage>["status"];
-  stop: UseChatHelpers<ChatMessage>["stop"];
-  regenerate: UseChatHelpers<ChatMessage>["regenerate"];
-  addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
+  setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  sendMessage: (message?: any, options?: any) => any;
+  handleSubmit: (e?: React.FormEvent) => any;
+  handleInputChange: (
+    e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>
+  ) => void;
+  status: any;
+  stop: () => any;
+  regenerate: (options?: any) => any;
+  addToolApprovalResponse: (response: any) => any;
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
   visibilityType: VisibilityType;
@@ -45,6 +45,8 @@ type ActiveChatContextValue = {
   votes: Vote[] | undefined;
   currentModelId: string;
   setCurrentModelId: (id: string) => void;
+  chatMode: "normal" | "rag";
+  setChatMode: (mode: "normal" | "rag") => void;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
 };
@@ -58,8 +60,6 @@ function extractChatId(pathname: string): string | null {
 
 export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { setDataStream } = useDataStream();
-  const { mutate } = useSWRConfig();
 
   const chatIdFromUrl = extractChatId(pathname);
   const isNewChat = !chatIdFromUrl;
@@ -74,15 +74,11 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
 
   const [currentModelId, setCurrentModelId] = useState(DEFAULT_CHAT_MODEL);
-  const currentModelIdRef = useRef(currentModelId);
-  useEffect(() => {
-    currentModelIdRef.current = currentModelId;
-  }, [currentModelId]);
-
-  const [input, setInput] = useState("");
+  const [chatMode, setChatMode] = useState<"normal" | "rag">("normal");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
+  const [input, setInput] = useState("");
 
-  const { data: chatData, isLoading } = useSWR(
+  const { data: chatData, isLoading: isChatLoading } = useSWR(
     isNewChat
       ? null
       : `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/messages?chatId=${chatId}`,
@@ -100,68 +96,23 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const {
     messages,
     setMessages,
-    sendMessage,
+    sendMessage: baseSendMessage,
     status,
     stop,
     regenerate,
-    resumeStream,
     addToolApprovalResponse,
-  } = useChat<ChatMessage>({
+    resumeStream,
+  } = useChat({
     id: chatId,
-    messages: initialMessages,
-    generateId: generateUUID,
-    sendAutomaticallyWhen: ({ messages: currentMessages }) => {
-      const lastMessage = currentMessages.at(-1);
-      return (
-        lastMessage?.parts?.some(
-          (part) =>
-            "state" in part &&
-            part.state === "approval-responded" &&
-            "approval" in part &&
-            (part.approval as { approved?: boolean })?.approved === true
-        ) ?? false
-      );
+    messages: initialMessages as any,
+    experimental_throttle: 100,
+    // @ts-ignore - body is supported at runtime in many transports but missing in types
+    body: {
+      mode: chatMode,
     },
-    transport: new DefaultChatTransport({
-      api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
-      fetch: fetchWithErrorHandlers,
-      prepareSendMessagesRequest(request) {
-        const lastMessage = request.messages.at(-1);
-        const isToolApprovalContinuation =
-          lastMessage?.role !== "user" ||
-          request.messages.some((msg) =>
-            msg.parts?.some((part) => {
-              const state = (part as { state?: string }).state;
-              return (
-                state === "approval-responded" || state === "output-denied"
-              );
-            })
-          );
-
-        return {
-          body: {
-            id: request.id,
-            ...(isToolApprovalContinuation
-              ? { messages: request.messages }
-              : { message: lastMessage }),
-            selectedChatModel: currentModelIdRef.current,
-            selectedVisibilityType: visibility,
-            ...request.body,
-          },
-        };
-      },
-    }),
-    onData: (dataPart) => {
-      setDataStream((ds) => (ds ? [...ds, dataPart] : []));
-    },
-    onFinish: () => {
-      mutate(unstable_serialize(getChatHistoryPaginationKey));
-    },
-    onError: (error) => {
+    onError: (error: Error) => {
       if (error.message?.includes("AI Gateway requires a valid credit card")) {
         setShowCreditCardAlert(true);
-      } else if (error instanceof ChatbotError) {
-        toast({ type: "error", description: error.message });
       } else {
         toast({
           type: "error",
@@ -170,6 +121,37 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       }
     },
   });
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      setInput(e.target.value);
+    },
+    []
+  );
+
+  const sendMessage = useCallback(async (
+    params: string | (Omit<ChatMessage, "id"> & { id?: string })
+  ) => {
+    if (typeof params === "string") {
+      const text = params.trim();
+      if (!text) return;
+
+      const userMessage: Omit<ChatMessage, "id"> = {
+        role: "user",
+        parts: [{ type: "text", text }],
+      };
+
+      setInput("");
+    }
+
+    return baseSendMessage(params as any);
+  }, [baseSendMessage]);
+
+  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!input.trim() || status === "streaming") return;
+    await sendMessage(input);
+  }, [input, status, sendMessage]);
 
   const loadedChatIds = useRef(new Set<string>());
 
@@ -183,7 +165,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }
     if (chatData?.messages) {
       loadedChatIds.current.add(chatId);
-      setMessages(chatData.messages);
+      setMessages(chatData.messages as any);
     }
   }, [chatId, chatData?.messages, setMessages]);
 
@@ -196,43 +178,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [chatId, isNewChat, setMessages]);
-
-  useEffect(() => {
-    if (chatData && !isNewChat) {
-      const cookieModel = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("chat-model="))
-        ?.split("=")[1];
-      if (cookieModel) {
-        setCurrentModelId(decodeURIComponent(cookieModel));
-      }
-    }
-  }, [chatData, isNewChat]);
-
-  const hasAppendedQueryRef = useRef(false);
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const query = params.get("query");
-    if (query && !hasAppendedQueryRef.current) {
-      hasAppendedQueryRef.current = true;
-      window.history.replaceState(
-        {},
-        "",
-        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
-      );
-      sendMessage({
-        role: "user" as const,
-        parts: [{ type: "text", text: query }],
-      });
-    }
-  }, [sendMessage, chatId]);
-
-  useAutoResume({
-    autoResume: !isNewChat && !!chatData,
-    initialMessages,
-    resumeStream,
-    setMessages,
-  });
 
   const isReadonly = isNewChat ? false : (chatData?.isReadonly ?? false);
 
@@ -247,21 +192,25 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ActiveChatContextValue>(
     () => ({
       chatId,
-      messages,
-      setMessages,
-      sendMessage,
-      status,
+      messages: messages as ChatMessage[],
+      setMessages: setMessages as any,
+      sendMessage: sendMessage as any,
+      handleSubmit,
+      status: status as any,
       stop,
-      regenerate,
+      regenerate: regenerate as any,
       addToolApprovalResponse,
       input,
       setInput,
+      handleInputChange,
       visibilityType: visibility,
       isReadonly,
-      isLoading: !isNewChat && isLoading,
+      isLoading: !isNewChat && isChatLoading,
       votes,
       currentModelId,
       setCurrentModelId,
+      chatMode,
+      setChatMode,
       showCreditCardAlert,
       setShowCreditCardAlert,
     }),
@@ -270,17 +219,20 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       messages,
       setMessages,
       sendMessage,
+      handleSubmit,
       status,
       stop,
       regenerate,
       addToolApprovalResponse,
       input,
+      handleInputChange,
       visibility,
       isReadonly,
       isNewChat,
-      isLoading,
+      isChatLoading,
       votes,
       currentModelId,
+      chatMode,
       showCreditCardAlert,
     ]
   );
@@ -295,7 +247,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 export function useActiveChat() {
   const context = useContext(ActiveChatContext);
   if (!context) {
-    throw new Error("useActiveChat must be used within ActiveChatProvider");
+    throw new Error("useActiveChat must be used within an ActiveChatProvider");
   }
   return context;
 }

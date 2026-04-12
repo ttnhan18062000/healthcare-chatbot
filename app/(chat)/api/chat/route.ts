@@ -1,61 +1,19 @@
-import { geolocation, ipAddress } from "@vercel/functions";
+import { streamText, createUIMessageStreamResponse, generateText } from "ai";
+import { auth } from "@/app/(auth)/auth";
 import {
-  convertToModelMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  generateId,
-  stepCountIs,
-  streamText,
-} from "ai";
-import { checkBotId } from "botid/server";
-import { after } from "next/server";
-import { createResumableStreamContext } from "resumable-stream";
-import { auth, type UserType } from "@/app/(auth)/auth";
-import { entitlementsByUserType } from "@/lib/ai/entitlements";
-import {
-  allowedModelIds,
-  chatModels,
-  DEFAULT_CHAT_MODEL,
-  getCapabilities,
-} from "@/lib/ai/models";
-import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getLanguageModel } from "@/lib/ai/providers";
-import { createDocument } from "@/lib/ai/tools/create-document";
-import { editDocument } from "@/lib/ai/tools/edit-document";
-import { getWeather } from "@/lib/ai/tools/get-weather";
-import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
-import { updateDocument } from "@/lib/ai/tools/update-document";
-import { isProductionEnvironment } from "@/lib/constants";
-import {
-  createStreamId,
   deleteChatById,
   getChatById,
-  getMessageCountByUserId,
-  getMessagesByChatId,
   saveChat,
   saveMessages,
-  updateChatTitleById,
-  updateMessage,
 } from "@/lib/db/queries";
-import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
-import { checkIpRateLimit } from "@/lib/ratelimit";
-import type { ChatMessage } from "@/lib/types";
-import { convertToUIMessages, generateUUID } from "@/lib/utils";
-import { generateTitleFromUserMessage } from "../../actions";
-import { type PostRequestBody, postRequestBodySchema } from "./schema";
+import { postRequestBodySchema, type PostRequestBody } from "./schema";
+import {
+  getOrCreateVectorStore,
+} from "@/lib/ai/assistant";
+import { openai } from "@ai-sdk/openai";
 
 export const maxDuration = 60;
-
-function getStreamContext() {
-  try {
-    return createResumableStreamContext({ waitUntil: after });
-  } catch (_) {
-    return null;
-  }
-}
-
-export { getStreamContext };
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -63,283 +21,244 @@ export async function POST(request: Request) {
   try {
     const json = await request.json();
     requestBody = postRequestBodySchema.parse(json);
-  } catch (_) {
+  } catch (error) {
     return new ChatbotError("bad_request:api").toResponse();
   }
 
-  try {
-    const { id, message, messages, selectedChatModel, selectedVisibilityType } =
-      requestBody;
+  let { id: chatId, message, messages, mode = "normal" } = requestBody;
 
-    const [, session] = await Promise.all([
-      checkBotId().catch(() => null),
-      auth(),
-    ]);
-
-    if (!session?.user) {
-      return new ChatbotError("unauthorized:chat").toResponse();
+  if (!message && messages && messages.length > 0) {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    if (lastUserMessage) {
+      message = lastUserMessage as any;
     }
+  }
 
-    const chatModel = allowedModelIds.has(selectedChatModel)
-      ? selectedChatModel
-      : DEFAULT_CHAT_MODEL;
+  if (!message || message.role !== "user") {
+    return new ChatbotError("bad_request:api").toResponse();
+  }
 
-    await checkIpRateLimit(ipAddress(request));
+  const session = await auth();
+  if (!session?.user) {
+    return new ChatbotError("unauthorized:chat").toResponse();
+  }
 
-    const userType: UserType = session.user.type;
+  // 1. Get or Create Vector Store
+  const vectorStoreId = await getOrCreateVectorStore();
 
-    const messageCount = await getMessageCountByUserId({
-      id: session.user.id,
-      differenceInHours: 1,
+  // 2. Get or Create Chat
+  let chat = await getChatById({ id: chatId });
+
+  if (!chat) {
+    await saveChat({
+      id: chatId,
+      userId: session.user.id,
+      title: message.parts[0].type === "text" ? message.parts[0].text.slice(0, 50) : "New Chat",
+      visibility: "private",
     });
+  }
 
-    if (messageCount > entitlementsByUserType[userType].maxMessagesPerHour) {
-      return new ChatbotError("rate_limit:chat").toResponse();
-    }
+  // 3. Save User Message
+  await saveMessages({
+    messages: [
+      {
+        id: message.id,
+        chatId: chatId,
+        role: "user",
+        parts: message.parts,
+        attachments: [],
+        createdAt: new Date(),
+      },
+    ],
+  });
 
-    const isToolApprovalFlow = Boolean(messages);
+  const txtAttachment = message.parts.find(
+    (p) => p.type === "file" && (p.name.endsWith(".txt") || (p.mediaType as string) === "text/plain")
+  );
 
-    const chat = await getChatById({ id });
-    let messagesFromDb: DBMessage[] = [];
-    let titlePromise: Promise<string> | null = null;
+  if (txtAttachment && txtAttachment.type === "file") {
+    return createUIMessageStreamResponse({
+      stream: new ReadableStream({
+        async start(controller) {
+          const dataStream = {
+            writeData: (data: any) => {
+              controller.enqueue({ type: "data", data } as any);
+            },
+            writeText: (text: string) => {
+              controller.enqueue({ type: "text-delta", textDelta: text } as any);
+            },
+            writeMessageAnnotation: (annotation: any) => {
+              controller.enqueue({ type: "message-annotation", ...annotation } as any);
+            }
+          };
+        try {
+          const fileResponse = await fetch(txtAttachment.url);
+          const content = await fileResponse.text();
+          const lines = content.split("\n").filter((l) => l.trim().length > 0);
 
-    if (chat) {
-      if (chat.userId !== session.user.id) {
-        return new ChatbotError("forbidden:chat").toResponse();
-      }
-      messagesFromDb = await getMessagesByChatId({ id });
-    } else if (message?.role === "user") {
-      await saveChat({
-        id,
-        userId: session.user.id,
-        title: "New chat",
-        visibility: selectedVisibilityType,
-      });
-      titlePromise = generateTitleFromUserMessage({ message });
-    }
-
-    let uiMessages: ChatMessage[];
-
-    if (isToolApprovalFlow && messages) {
-      const dbMessages = convertToUIMessages(messagesFromDb);
-      const approvalStates = new Map(
-        messages.flatMap(
-          (m) =>
-            m.parts
-              ?.filter(
-                (p: Record<string, unknown>) =>
-                  p.state === "approval-responded" ||
-                  p.state === "output-denied"
-              )
-              .map((p: Record<string, unknown>) => [
-                String(p.toolCallId ?? ""),
-                p,
-              ]) ?? []
-        )
-      );
-      uiMessages = dbMessages.map((msg) => ({
-        ...msg,
-        parts: msg.parts.map((part) => {
-          if (
-            "toolCallId" in part &&
-            approvalStates.has(String(part.toolCallId))
-          ) {
-            return { ...part, ...approvalStates.get(String(part.toolCallId)) };
+          if (lines.length > 100) {
+            dataStream.writeMessageAnnotation({
+              type: "error",
+              content: "Rejecting file: Batch processing limit is 100 lines.",
+            });
+            return;
           }
-          return part;
-        }),
-      })) as ChatMessage[];
-    } else {
-      uiMessages = [
-        ...convertToUIMessages(messagesFromDb),
-        message as ChatMessage,
-      ];
-    }
 
-    const { longitude, latitude, city, country } = geolocation(request);
+          const results = [];
+          for (const line of lines) {
+            const { text } = await generateText({
+              model: openai("gpt-4o"),
+              system: `Bạn là một trợ lý AI đồng cảm và hỗ trợ chuyên chăm sóc bệnh nhân sa sút trí tuệ.
+Hãy sử dụng tone 'mình-bạn' thân thiện.
+${
+  mode === "rag"
+    ? "Dựa trên kiến thức được cung cấp từ các tài liệu y tế đi kèm qua công cụ fileSearch."
+    : ""
+}
+KHÔNG thay thế lời khuyên y tế chuyên nghiệp.`,
+              prompt: line,
+              tools: mode === "rag" ? {
+                fileSearch: (openai as any).tools.fileSearch({
+                  vectorStoreIds: [await getOrCreateVectorStore()],
+                }),
+              } : {},
+            });
+            results.push({ input: line, output: text });
+          }
 
-    const requestHints: RequestHints = {
-      longitude,
-      latitude,
-      city,
-      country,
-    };
+          const jsonResult = JSON.stringify(results, null, 2);
+          dataStream.writeData({ type: "batch-result", data: jsonResult });
+          dataStream.writeText("(Result.json) click to download");
 
-    if (message?.role === "user") {
-      await saveMessages({
-        messages: [
-          {
-            chatId: id,
-            id: message.id,
-            role: "user",
-            parts: message.parts,
-            attachments: [],
-            createdAt: new Date(),
-          },
-        ],
-      });
-    }
-
-    const modelConfig = chatModels.find((m) => m.id === chatModel);
-    const modelCapabilities = await getCapabilities();
-    const capabilities = modelCapabilities[chatModel];
-    const isReasoningModel = capabilities?.reasoning === true;
-    const supportsTools = capabilities?.tools === true;
-
-    const modelMessages = await convertToModelMessages(uiMessages);
-
-    const stream = createUIMessageStream({
-      originalMessages: isToolApprovalFlow ? uiMessages : undefined,
-      execute: async ({ writer: dataStream }) => {
-        const result = streamText({
-          model: getLanguageModel(chatModel),
-          system: systemPrompt({ requestHints, supportsTools }),
-          messages: modelMessages,
-          stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            isReasoningModel && !supportsTools
-              ? []
-              : [
-                  "getWeather",
-                  "createDocument",
-                  "editDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
-          providerOptions: {
-            ...(modelConfig?.gatewayOrder && {
-              gateway: { order: modelConfig.gatewayOrder },
-            }),
-            ...(modelConfig?.reasoningEffort && {
-              openai: { reasoningEffort: modelConfig.reasoningEffort },
-            }),
-          },
-          tools: {
-            getWeather,
-            createDocument: createDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            editDocument: editDocument({ dataStream, session }),
-            updateDocument: updateDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-          },
-          experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
-            functionId: "stream-text",
-          },
-        });
-
-        dataStream.merge(
-          result.toUIMessageStream({ sendReasoning: isReasoningModel })
-        );
-
-        if (titlePromise) {
-          const title = await titlePromise;
-          dataStream.write({ type: "data-chat-title", data: title });
-          updateChatTitleById({ chatId: id, title });
+          // Save batch message
+          await saveMessages({
+            messages: [
+              {
+                id: `${chatId}-${Date.now()}`,
+                chatId,
+                role: "assistant",
+                parts: [{ type: "text", text: "(Result.json) click to download" }],
+                attachments: [],
+                createdAt: new Date(),
+              },
+            ],
+          });
+          controller.close();
+        } catch (error) {
+          console.error("Batch processing error:", error);
+          controller.enqueue({ type: "text-delta", textDelta: "An error occurred during batch processing." } as any);
+          controller.close();
         }
       },
-      generateId: generateUUID,
-      onFinish: async ({ messages: finishedMessages }) => {
-        if (isToolApprovalFlow) {
-          for (const finishedMsg of finishedMessages) {
-            const existingMsg = uiMessages.find((m) => m.id === finishedMsg.id);
-            if (existingMsg) {
-              await updateMessage({
-                id: finishedMsg.id,
-                parts: finishedMsg.parts,
+    }),
+  });
+}
+
+  // 5. Stream Response (Normal or RAG)
+  const result = streamText({
+    model: openai("gpt-4o"),
+    system: `Bạn là một trợ lý AI đồng cảm và hỗ trợ chuyên chăm sóc bệnh nhân sa sút trí tuệ.
+Hãy sử dụng tone 'mình-bạn' thân thiện.
+Dựa trên kiến thức được cung cấp từ các tài liệu y tế đi kèm qua công cụ fileSearch.
+KHÔNG thay thế lời khuyên y tế chuyên nghiệp.`,
+    messages: [
+      {
+        role: "user",
+        content: message.parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as any).text)
+          .join("\n"),
+      },
+    ],
+    tools: mode === "rag" ? {
+      fileSearch: (openai as any).tools.fileSearch({
+        vectorStoreIds: [vectorStoreId],
+      }),
+    } : {},
+    // maxSteps is not supported in this version of ai SDK
+    onFinish: async () => {
+      const response = await result.response;
+      await saveMessages({
+        messages: response.messages.map((msg, index) => ({
+          id: (msg as any).id || `${chatId}-${Date.now()}-${index}`,
+          chatId,
+          role: msg.role === "tool" ? "assistant" : msg.role as any,
+          parts: msg.content as any,
+          attachments: [],
+          createdAt: new Date(),
+        })),
+      });
+    },
+  });
+
+  const COMPATIBLE_TYPES = new Set([
+    "text-start",
+    "text-delta",
+    "text-end",
+    "tool-call",
+    "tool-result",
+    "tool-error",
+    "tool-input-start",
+    "tool-input-delta",
+    "tool-input-available",
+    "tool-input-error",
+    "tool-approval-request",
+    "tool-output-available",
+    "tool-output-error",
+    "tool-output-denied",
+    "reasoning-start",
+    "reasoning-delta",
+    "reasoning-end",
+    "source-url",
+    "source-document",
+    "file",
+    "message-metadata",
+    "error",
+  ]);
+
+  return createUIMessageStreamResponse({
+    stream: result.fullStream.pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          if (COMPATIBLE_TYPES.has(chunk.type)) {
+            // Strict Compatibility remapping: Server (6.0) -> Client (Legacy)
+            // We create fresh objects to avoid including unrecognized keys
+            if (chunk.type === "text-delta" && "text" in (chunk as any)) {
+              controller.enqueue({
+                type: "text-delta",
+                id: (chunk as any).id,
+                delta: (chunk as any).text,
+              });
+            } else if (chunk.type === "tool-call" && "input" in (chunk as any)) {
+              controller.enqueue({
+                type: "tool-call",
+                toolCallId: (chunk as any).toolCallId,
+                toolName: (chunk as any).toolName,
+                args: (chunk as any).input,
+              });
+            } else if (chunk.type === "tool-result" && "output" in (chunk as any)) {
+              controller.enqueue({
+                type: "tool-result",
+                toolCallId: (chunk as any).toolCallId,
+                toolName: (chunk as any).toolName,
+                result: (chunk as any).output,
+              });
+            } else if (chunk.type === "reasoning-delta" && "delta" in (chunk as any)) {
+              controller.enqueue({
+                type: "reasoning-delta",
+                id: (chunk as any).id,
+                delta: (chunk as any).delta,
               });
             } else {
-              await saveMessages({
-                messages: [
-                  {
-                    id: finishedMsg.id,
-                    role: finishedMsg.role,
-                    parts: finishedMsg.parts,
-                    createdAt: new Date(),
-                    attachments: [],
-                    chatId: id,
-                  },
-                ],
-              });
+              controller.enqueue(chunk);
             }
           }
-        } else if (finishedMessages.length > 0) {
-          await saveMessages({
-            messages: finishedMessages.map((currentMessage) => ({
-              id: currentMessage.id,
-              role: currentMessage.role,
-              parts: currentMessage.parts,
-              createdAt: new Date(),
-              attachments: [],
-              chatId: id,
-            })),
-          });
-        }
-      },
-      onError: (error) => {
-        if (
-          error instanceof Error &&
-          error.message?.includes(
-            "AI Gateway requires a valid credit card on file to service requests"
-          )
-        ) {
-          return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
-        }
-        return "Oops, an error occurred!";
-      },
-    });
-
-    return createUIMessageStreamResponse({
-      stream,
-      async consumeSseStream({ stream: sseStream }) {
-        if (!process.env.REDIS_URL) {
-          return;
-        }
-        try {
-          const streamContext = getStreamContext();
-          if (streamContext) {
-            const streamId = generateId();
-            await createStreamId({ streamId, chatId: id });
-            await streamContext.createNewResumableStream(
-              streamId,
-              () => sseStream
-            );
-          }
-        } catch (_) {
-          /* non-critical */
-        }
-      },
-    });
-  } catch (error) {
-    const vercelId = request.headers.get("x-vercel-id");
-
-    if (error instanceof ChatbotError) {
-      return error.toResponse();
-    }
-
-    if (
-      error instanceof Error &&
-      error.message?.includes(
-        "AI Gateway requires a valid credit card on file to service requests"
-      )
-    ) {
-      return new ChatbotError("bad_request:activate_gateway").toResponse();
-    }
-
-    console.error("Unhandled error in chat API:", error, { vercelId });
-    return new ChatbotError("offline:chat").toResponse();
-  }
+        },
+      })
+    ) as any,
+  });
 }
 
 export async function DELETE(request: Request) {

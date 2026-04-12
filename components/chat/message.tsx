@@ -20,6 +20,7 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+import { BatchDownloadButton } from "./batch-download-button";
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -325,6 +326,12 @@ const PurePreviewMessage = ({
     <>
       {attachments}
       {parts}
+      {(message as any).data?.map((data: any, i: number) => {
+        if (data && typeof data === "object" && data.type === "batch-result") {
+          return <BatchDownloadButton data={data.data} key={`batch-${i}`} />;
+        }
+        return null;
+      })}
       {actions}
     </>
   );

@@ -1,5 +1,6 @@
 import { initBotId } from "botid/client/core";
 
+/*
 initBotId({
   protect: [
     {
@@ -8,3 +9,4 @@ initBotId({
     },
   ],
 });
+*/ Pip联系

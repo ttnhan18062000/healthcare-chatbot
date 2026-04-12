@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import useSWR from "swr";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
+import { useActiveChat } from "@/hooks/use-active-chat";
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -134,6 +135,8 @@ function PureMultimodalInput({
       setInput(finalValue);
     }
   }, [localStorageInput, setInput]);
+
+  const { chatMode, setChatMode } = useActiveChat();
 
   useEffect(() => {
     setLocalStorageInput(input);
@@ -289,6 +292,19 @@ function PureMultimodalInput({
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files || []);
+
+      // Validation for .txt files (max 100 lines)
+      for (const file of files) {
+        if (file.type === "text/plain" || file.name.endsWith(".txt")) {
+          const content = await file.text();
+          const lines = content.split("\n").filter(l => l.trim().length > 0);
+          if (lines.length > 100) {
+            toast.error(`The file "${file.name}" exceeds the 100-line limit for batch processing. Please upload a smaller file.`);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+          }
+        }
+      }
 
       setUploadQueue(files.map((file) => file.name));
 
@@ -522,6 +538,7 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
               status={status}
             />
+            <ModeSelector chatMode={chatMode} setChatMode={setChatMode} />
             <ModelSelectorCompact
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
@@ -607,12 +624,12 @@ function PureAttachmentsButton({
     <Button
       className={cn(
         "h-7 w-7 rounded-lg border border-border/40 p-1 transition-colors",
-        hasVision
+        hasVision || true // Allow attachments for batch processing (.txt)
           ? "text-foreground hover:border-border hover:text-foreground"
           : "text-muted-foreground/30 cursor-not-allowed"
       )}
       data-testid="attachments-button"
-      disabled={status !== "ready" || !hasVision}
+      disabled={status !== "ready"}
       onClick={(event) => {
         event.preventDefault();
         fileInputRef.current?.click();
@@ -790,6 +807,45 @@ function PureModelSelectorCompact({
 }
 
 const ModelSelectorCompact = memo(PureModelSelectorCompact);
+
+function ModeSelector({
+  chatMode,
+  setChatMode,
+}: {
+  chatMode: "normal" | "rag";
+  setChatMode: (mode: "normal" | "rag") => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-border/40 bg-muted/30 p-0.5">
+      <Button
+        className={cn(
+          "h-6 px-2 text-[11px] font-medium transition-all",
+          chatMode === "normal"
+            ? "bg-background text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+        onClick={() => setChatMode("normal")}
+        size="sm"
+        variant="ghost"
+      >
+        Normal
+      </Button>
+      <Button
+        className={cn(
+          "h-6 px-2 text-[11px] font-medium transition-all",
+          chatMode === "rag"
+            ? "bg-background text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+        onClick={() => setChatMode("rag")}
+        size="sm"
+        variant="ghost"
+      >
+        RAG
+      </Button>
+    </div>
+  );
+}
 
 function PureStopButton({
   stop,
