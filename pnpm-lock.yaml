@@ -29,9 +29,15 @@ importers:
       '@codemirror/view':
         specifier: ^6.35.3
         version: 6.36.4
+      '@langchain/core':
+        specifier: ^1.1.39
+        version: 1.1.39(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.34.0(ws@8.18.1(bufferutil@4.0.9))(zod@3.25.76))(ws@8.18.1(bufferutil@4.0.9))
       '@langchain/langgraph':
         specifier: ^1.2.8
         version: 1.2.8(@langchain/core@1.1.39(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.34.0(ws@8.18.1(bufferutil@4.0.9))(zod@3.25.76))(ws@8.18.1(bufferutil@4.0.9)))(react-dom@19.0.1(react@19.0.1))(react@19.0.1)(zod@3.25.76)
+      '@langchain/openai':
+        specifier: ^1.4.4
+        version: 1.4.4(@langchain/core@1.1.39(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.34.0(ws@8.18.1(bufferutil@4.0.9))(zod@3.25.76))(ws@8.18.1(bufferutil@4.0.9)))(ws@8.18.1(bufferutil@4.0.9))
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
@@ -1139,6 +1145,12 @@ packages:
     peerDependenciesMeta:
       zod-to-json-schema:
         optional: true
+
+  '@langchain/openai@1.4.4':
+    resolution: {integrity: sha512-mRr/X5rvlwPj6cSXPxbL+CtOqYANO1/+CQ3Z+5t48kWnrlgPYOazmA+UAWvqQOuwJ6LaYn3SFrt43rR4lte/Ow==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.1.39
 
   '@lezer/common@1.2.3':
     resolution: {integrity: sha512-w7ojc8ejBqr2REPsWxJjrMFsA/ysDCFICn8zEOR9mrqzOu2amhITYuLD8ag6XZf0CFXDrhKqw7+tW8cX66NaDA==}
@@ -4953,6 +4965,15 @@ snapshots:
       - react-dom
       - svelte
       - vue
+
+  '@langchain/openai@1.4.4(@langchain/core@1.1.39(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.34.0(ws@8.18.1(bufferutil@4.0.9))(zod@3.25.76))(ws@8.18.1(bufferutil@4.0.9)))(ws@8.18.1(bufferutil@4.0.9))':
+    dependencies:
+      '@langchain/core': 1.1.39(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.34.0(ws@8.18.1(bufferutil@4.0.9))(zod@3.25.76))(ws@8.18.1(bufferutil@4.0.9))
+      js-tiktoken: 1.0.21
+      openai: 6.34.0(ws@8.18.1(bufferutil@4.0.9))(zod@3.25.76)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - ws
 
   '@lezer/common@1.2.3': {}
 

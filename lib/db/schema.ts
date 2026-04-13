@@ -36,6 +36,9 @@ export const chat = pgTable("Chat", {
     .default("private"),
   assistantId: text("assistantId"),
   threadId: text("threadId"),
+  mode: varchar("mode", { enum: ["normal", "rag"] })
+    .notNull()
+    .default("normal"),
 });
 
 export type Chat = InferSelectModel<typeof chat>;

@@ -115,6 +115,10 @@ const PurePreviewMessage = ({
     }
 
     if (type === "text") {
+      const citations = (message as any).data?.flatMap((d: any) => 
+        Array.isArray(d) ? d.filter((item: any) => item && typeof item === 'object' && 'snippet' in item) : []
+      ) ?? [];
+
       return (
         <MessageContent
           className={cn("text-[13px] leading-[1.65]", {
@@ -124,7 +128,7 @@ const PurePreviewMessage = ({
           data-testid="message-content"
           key={key}
         >
-          <MessageResponse>{sanitizeText(part.text)}</MessageResponse>
+          <MessageResponse citations={citations}>{sanitizeText(part.text)}</MessageResponse>
         </MessageContent>
       );
     }

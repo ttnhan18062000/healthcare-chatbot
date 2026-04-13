@@ -51,7 +51,11 @@ export async function createUser(email: string, password: string) {
   const hashedPassword = generateHashedPassword(password);
 
   try {
-    return await db.insert(user).values({ email, password: hashedPassword });
+    return await db.insert(user).values({
+      id: generateUUID(),
+      email,
+      password: hashedPassword,
+    });
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to create user");
   }
@@ -62,10 +66,18 @@ export async function createGuestUser() {
   const password = generateHashedPassword(generateUUID());
 
   try {
-    return await db.insert(user).values({ email, password }).returning({
-      id: user.id,
-      email: user.email,
-    });
+    return await db
+      .insert(user)
+      .values({
+        id: generateUUID(),
+        email,
+        password,
+        isAnonymous: true,
+      })
+      .returning({
+        id: user.id,
+        email: user.email,
+      });
   } catch (_error) {
     throw new ChatbotError(
       "bad_request:database",
@@ -81,6 +93,7 @@ export async function saveChat({
   visibility,
   assistantId,
   threadId,
+  mode,
 }: {
   id: string;
   userId: string;
@@ -88,6 +101,7 @@ export async function saveChat({
   visibility: VisibilityType;
   assistantId?: string;
   threadId?: string;
+  mode: "normal" | "rag";
 }) {
   try {
     return await db.insert(chat).values({
@@ -96,6 +110,7 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      mode,
       assistantId,
       threadId,
     });

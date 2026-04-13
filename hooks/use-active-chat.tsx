@@ -86,6 +86,12 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     { revalidateOnFocus: false }
   );
 
+  useEffect(() => {
+    if (chatData?.chatMode && !isChatLoading) {
+      setChatMode(chatData.chatMode);
+    }
+  }, [chatData?.chatMode, isChatLoading]);
+
   const initialMessages: ChatMessage[] = isNewChat
     ? []
     : (chatData?.messages ?? []);

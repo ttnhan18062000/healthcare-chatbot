@@ -12,10 +12,12 @@ function PureChatHeader({
   chatId,
   selectedVisibilityType,
   isReadonly,
+  chatMode,
 }: {
   chatId: string;
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;
+  chatMode: "normal" | "rag";
 }) {
   const { state, toggleSidebar, isMobile } = useSidebar();
 
@@ -33,6 +35,13 @@ function PureChatHeader({
       >
         <PanelLeftIcon className="size-4" />
       </Button>
+
+      <div className="flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="opacity-60">Mode:</span>
+        <span className="text-foreground">
+          {chatMode === "rag" ? "Document" : "Normal"}
+        </span>
+      </div>
 
       <Link
         className="flex size-8 items-center justify-center rounded-lg md:hidden"
@@ -71,6 +80,7 @@ export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
     prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
-    prevProps.isReadonly === nextProps.isReadonly
+    prevProps.isReadonly === nextProps.isReadonly &&
+    prevProps.chatMode === nextProps.chatMode
   );
 });

@@ -20,6 +20,8 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { remarkCitation } from "@/lib/ai/remark-citation";
+import { Citation } from "@/components/chat/citation";
 import {
   createContext,
   memo,
@@ -318,22 +320,45 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
+  citations?: Array<{ id: string; source: string; snippet: string }>;
+};
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      plugins={streamdownPlugins}
-      {...props}
-    />
-  ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
+  ({ className, citations = [], ...props }: MessageResponseProps) => {
+    const remarkPlugins = useMemo(() => [remarkCitation], []);
+    const components = useMemo(() => ({
+      citation: (p: any) => {
+        const citation = citations.find(c => c.id === p.id);
+        return (
+          <Citation 
+            id={p.id} 
+            index={parseInt(p.id)} 
+            source={citation?.source} 
+            snippet={citation?.snippet} 
+          />
+        );
+      }
+    }), [citations]);
+
+    return (
+      <Streamdown
+        className={cn(
+          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          className
+        )}
+        plugins={streamdownPlugins}
+        remarkPlugins={remarkPlugins}
+        components={components}
+        {...props}
+      />
+    );
+  },
+  (prevProps, nextProps) => 
+    prevProps.children === nextProps.children && 
+    prevProps.citations?.length === nextProps.citations?.length
 );
 
 MessageResponse.displayName = "MessageResponse";

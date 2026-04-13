@@ -538,7 +538,9 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
               status={status}
             />
-            <ModeSelector chatMode={chatMode} setChatMode={setChatMode} />
+            {messages.length === 0 && (
+              <ModeSelector chatMode={chatMode} setChatMode={setChatMode} />
+            )}
             <ModelSelectorCompact
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
@@ -841,7 +843,7 @@ function ModeSelector({
         size="sm"
         variant="ghost"
       >
-        RAG
+        Document
       </Button>
     </div>
   );

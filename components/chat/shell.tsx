@@ -44,6 +44,7 @@ export function ChatShell() {
     votes,
     currentModelId,
     setCurrentModelId,
+    chatMode,
     showCreditCardAlert,
     setShowCreditCardAlert,
   } = useActiveChat();
@@ -82,6 +83,7 @@ export function ChatShell() {
             chatId={chatId}
             isReadonly={isReadonly}
             selectedVisibilityType={visibilityType}
+            chatMode={chatMode}
           />
 
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:rounded-tl-[12px] md:border-t md:border-l md:border-border/40">
