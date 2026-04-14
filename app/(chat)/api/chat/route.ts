@@ -97,7 +97,7 @@ export async function POST(request: Request) {
   const mode = chat!.mode;
 
   // 3. Save User Message
-  if (!chat || messages.length === 0) {
+  if (!chat || !messages || messages.length === 0) {
     await saveMessages({
       messages: [
         {
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
               tools: mode === "rag" ? {
                 documentSearch: {
                   description: "Search for medical information in provided healthcare documents and manuals.",
-                  parameters: z.object({
+                  inputSchema: z.object({
                     query: z.string().describe("The search query for medical information."),
                   }),
                   execute: async ({ query }) => {
@@ -163,7 +163,6 @@ export async function POST(request: Request) {
                     await openaiClient.beta.threads.messages.create(thread.id, { role: "user", content: query });
                     const run = await openaiClient.beta.threads.runs.createAndPoll(thread.id, {
                       assistant_id: assistant.id,
-                      tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } },
                     });
                     if (run.status === "completed") {
                       const messages = await openaiClient.beta.threads.messages.list(thread.id);
@@ -238,11 +237,11 @@ export async function POST(request: Request) {
       role: m.role as any,
       content: m.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n"),
     })),
-    maxSteps: mode === "rag" ? 5 : 1,
+    // maxSteps: mode === "rag" ? 5 : 1,
     tools: mode === "rag" ? {
       documentSearch: {
         description: "Search for medical information in provided healthcare documents and manuals.",
-        parameters: z.object({
+        inputSchema: z.object({
           query: z.string().describe("The search query for medical information."),
         }),
         execute: async ({ query }) => {
@@ -253,7 +252,6 @@ export async function POST(request: Request) {
           await openaiClient.beta.threads.messages.create(thread.id, { role: "user", content: query });
           const run = await openaiClient.beta.threads.runs.createAndPoll(thread.id, {
             assistant_id: assistant.id,
-            tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } },
           });
           if (run.status === "completed") {
             const messages = await openaiClient.beta.threads.messages.list(thread.id);
