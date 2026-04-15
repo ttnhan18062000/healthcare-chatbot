@@ -15,7 +15,7 @@ import {
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
-import { SparklesIcon } from "./icons";
+import { FileIcon, LoaderIcon, SparklesIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
@@ -130,6 +130,61 @@ const PurePreviewMessage = ({
         >
           <MessageResponse citations={citations}>{sanitizeText(part.text)}</MessageResponse>
         </MessageContent>
+      );
+    }
+
+    if (type === "tool-documentSearch") {
+      const { toolCallId, state } = part;
+
+      if (state === "output-available") {
+        const citations = part.output.citations || [];
+        return (
+          <div
+            className="flex flex-col gap-2 rounded-xl border border-blue-200/50 bg-blue-50/30 p-4 dark:border-blue-900/30 dark:bg-blue-950/20"
+            key={toolCallId}
+          >
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+              <FileIcon size={14} />
+              <span className="text-xs font-semibold uppercase tracking-wider">
+                Kết quả tra cứu y tế
+              </span>
+            </div>
+            <MessageResponse citations={citations}>
+              {part.output.text}
+            </MessageResponse>
+
+            {citations.length > 0 && (
+              <div className="mt-3 flex flex-col gap-1 border-t border-blue-200/50 pt-2 dark:border-blue-900/30">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500/70">
+                  Nguồn tài liệu:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {citations.map((c: any) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center gap-1.5 rounded-md bg-blue-100/50 px-2 py-1 text-[10px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                    >
+                      <span className="font-bold">[{c.id}]</span>
+                      <span className="max-w-[150px] truncate opacity-80">
+                        {c.source}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          className="flex items-center gap-2 px-4 py-2 text-muted-foreground"
+          key={toolCallId}
+        >
+          <LoaderIcon className="animate-spin" size={12} />
+          <span className="text-xs">Đang tra cứu cơ sở dữ liệu y tế...</span>
+        </div>
       );
     }
 

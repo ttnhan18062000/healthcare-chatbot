@@ -75,6 +75,13 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const [currentModelId, setCurrentModelId] = useState(DEFAULT_CHAT_MODEL);
   const [chatMode, setChatMode] = useState<"normal" | "rag">("normal");
+  const isManualModeSelectionRef = useRef(false);
+
+  const setChatModeWithTracking = useCallback((mode: "normal" | "rag") => {
+    isManualModeSelectionRef.current = true;
+    setChatMode(mode);
+  }, []);
+
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [input, setInput] = useState("");
 
@@ -88,7 +95,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (chatData?.chatMode && !isChatLoading) {
-      setChatMode(chatData.chatMode);
+      if (!isManualModeSelectionRef.current) {
+        setChatMode(chatData.chatMode);
+      }
     }
   }, [chatData?.chatMode, isChatLoading]);
 
@@ -150,8 +159,12 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setInput("");
     }
 
-    return baseSendMessage(params as any);
-  }, [baseSendMessage]);
+    return baseSendMessage(params as any, {
+      body: {
+        mode: chatMode,
+      },
+    });
+  }, [baseSendMessage, chatMode]);
 
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -216,7 +229,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       currentModelId,
       setCurrentModelId,
       chatMode,
-      setChatMode,
+      setChatMode: setChatModeWithTracking,
       showCreditCardAlert,
       setShowCreditCardAlert,
     }),
