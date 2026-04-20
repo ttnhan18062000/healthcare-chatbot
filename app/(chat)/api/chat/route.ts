@@ -14,6 +14,7 @@ import {
   getOrCreateAssistant,
   openai as openaiClient,
 } from "@/lib/ai/assistant";
+import { documentSearch } from "@/lib/ai/tools/document-search";
 import { openai } from "@ai-sdk/openai";
 
 export const maxDuration = 60;
@@ -32,15 +33,16 @@ Bạn là “Trợ lý hỗ trợ người chăm sóc sa sút trí tuệ” dàn
 STYLE & TONE (VN)
 •	Giọng: ấm áp, gần gũi, tôn trọng, không phán xét. Tránh văn phong “sách vở”.
 •	Xưng hô mặc định: “mình–bạn” (hoặc “em–anh/chị” nếu người dùng tự xưng phù hợp). Không đổi xưng hô giữa chừng.
-•	Mở đầu: khi người dùng than mệt/lo/stress, luôn có 1 câu xác nhận cảm xúc (validation).
-•	Câu chữ: ngắn gọn, tự nhiên như nói chuyện đời thường; tránh văn phong hàn lâm.
+•	Mở đầu: khi người dùng than mệt/lo/stress, luôn có 1 câu xác nhận cảm xúc (validation) sâu sắc và đồng cảm.
+•	Câu chữ: **đầy đủ, chi tiết và có chiều sâu**. Tránh trả lời quá ngắn gọn. Hãy giải thích rõ ràng các bước thực hiện.
+•	Cấu trúc: Tổ chức câu trả lời một cách logic (thường gồm: Thấu hiểu -> Giải pháp chi tiết -> Lời khuyên/Hành động cụ thể). Sử dụng danh sách (bullet points) để dễ theo dõi.
 STRICT RAG MODE (VN)
 •	CHỈ trả lời dựa trên nội dung có trong Knowledge. TUYỆT ĐỐI KHÔNG dùng kiến thức chung.
 •	BẮT BUỘC sử dụng công cụ documentSearch ngay lập tức để tìm thông tin chính xác.
-•	Sau khi nhận được kết quả từ documentSearch, bạn BẮT BUỘC phải viết câu trả lời tổng hợp bằng chính lời của bạn dựa trên dữ liệu trả về. KHÔNG BAO GIỜ dừng lại sau khi gọi tool mà không viết phản hồi văn bản.
-•	Bạn BẮT BUỘC phải trích dẫn nguồn cho từng khẳng định bằng cách giữ nguyên các dấu ngoặc vuông chứa số thứ tự trích dẫn (ví dụ [1], [2]) trong văn bản.
+•	Sau khi nhận được kết quả từ documentSearch, bạn BẮT BUỘC phải viết câu trả lời tổng hợp **đầy đủ và chi tiết** bằng chính lời của bạn dựa trên toàn bộ dữ liệu trả về. Nếu Knowledge có nhiều thông tin, hãy tổng hợp hết để giúp ích tối đa cho người dùng.
+•	Bạn BẮT BUỘC phải trích dẫn nguồn cho từng khẳng định bằng cách giữ nguyên các dấu ngoặc vuông chứa số thứ tự trích dẫn (ví dụ [1], [2]) trong văn bản. **Hãy cực kỳ cẩn thận không để sót các dấu trích dẫn này.**
 •	Mọi ý chính phải kèm Nguồn theo format: Nguồn: <tên file> – <mục/heading> ở cuối câu hoặc đoạn.
-•	Nếu Knowledge không có thông tin, hãy trả lời: “Mình không thể trả lời câu hỏi của bạn dựa trên cơ sở dữ liệu hiện có.”
+•	Nếu Knowledge không có thông tin, hãy trả lời: “Mình không thể trả lời câu hỏi của bạn dựa trên cơ sở dữ liệu hiện có.” - Tuy nhiên, hãy cố gắng gợi ý người dùng cách tìm kiếm khác hoặc động viên họ.
 SAFETY - Chính sách an toàn
 •	Không đưa lời khuyên thay thế khám bệnh hay chẩn đoán.
 •	Luôn nhắc: bạn không thay thế bác sĩ/nhà trị liệu.`;
@@ -164,49 +166,7 @@ export async function POST(request: Request) {
               system: mode === "rag" ? SYSTEM_PROMPT_RAG : SYSTEM_PROMPT_NORMAL,
               prompt: line,
               tools: mode === "rag" ? {
-                documentSearch: {
-                  description: "Search for medical information in provided healthcare documents and manuals.",
-                  inputSchema: z.object({
-                    query: z.string().describe("The search query for medical information."),
-                  }),
-                  execute: async ({ query }) => {
-                    const vectorStoreId = await getOrCreateVectorStore();
-                    const assistant = await getOrCreateAssistant();
-                    const thread = await openaiClient.beta.threads.create();
-                    await openaiClient.beta.threads.messages.create(thread.id, { role: "user", content: query });
-                    const run = await openaiClient.beta.threads.runs.createAndPoll(thread.id, {
-                      assistant_id: assistant.id,
-                    });
-                    if (run.status === "completed") {
-                      const messages = await openaiClient.beta.threads.messages.list(thread.id);
-                      if (messages.data[0]?.content[0]?.type === "text") {
-                        const text = messages.data[0].content[0].text;
-                        let formattedText = text.value;
-
-                        const citations = await Promise.all(text.annotations.map(async (ann: any, i: number) => {
-                          const id = (i + 1).toString();
-                          const marker = `[${id}]`;
-                          if (ann.text) {
-                            formattedText = formattedText.replace(ann.text, marker);
-                          }
-                          return {
-                            id,
-                            snippet: ann.text || "Medical reference",
-                            source: ann.file_citation?.file_id 
-                              ? (await openaiClient.files.retrieve(ann.file_citation.file_id)).filename 
-                              : "Knowledge Base"
-                          };
-                        }));
-
-                        return {
-                          text: formattedText,
-                          citations
-                        };
-                      }
-                    }
-                    return { text: "No results", citations: [] };
-                  },
-                },
+                documentSearch: documentSearch(),
               } : {},
             });
             results.push({ input: line, output: text });
@@ -252,72 +212,7 @@ export async function POST(request: Request) {
     })),
     stopWhen: mode === "rag" ? stepCountIs(5) : stepCountIs(1),
     tools: mode === "rag" ? {
-      documentSearch: {
-        description: "Search for raw medical data in healthcare documents. Returns raw excerpts and source metadata. You MUST always synthesize the results into your own written response after calling this tool.",
-        inputSchema: z.object({
-          query: z.string().describe("The search query for medical information."),
-        }),
-        execute: async ({ query }) => {
-          console.info(`[DOCUMENT_SEARCH] Searching for: "${query}"`);
-          const vectorStoreId = await getOrCreateVectorStore();
-          const assistant = await getOrCreateAssistant();
-          const thread = await openaiClient.beta.threads.create();
-          await openaiClient.beta.threads.messages.create(thread.id, { role: "user", content: query });
-          const run = await openaiClient.beta.threads.runs.createAndPoll(thread.id, {
-            assistant_id: assistant.id,
-          });
-          if (run.status === "completed") {
-            const messages = await openaiClient.beta.threads.messages.list(thread.id);
-            if (messages.data[0]?.content[0]?.type === "text") {
-              const text = messages.data[0].content[0].text;
-              let formattedText = text.value;
-
-              // Deduplicate citations by source filename
-              const sourceMap = new Map<string, string>(); // filename -> citation id
-              const uniqueCitations: Array<{ id: string; snippet: string; source: string }> = [];
-              let nextId = 1;
-
-              for (const ann of text.annotations as any[]) {
-                let source = "Knowledge Base";
-                if (ann.file_citation?.file_id) {
-                  try {
-                    const file = await openaiClient.files.retrieve(ann.file_citation.file_id);
-                    source = file.filename;
-                  } catch { /* fallback to Knowledge Base */ }
-                }
-
-                let citationId: string;
-                if (sourceMap.has(source)) {
-                  citationId = sourceMap.get(source)!;
-                } else {
-                  citationId = nextId.toString();
-                  sourceMap.set(source, citationId);
-                  uniqueCitations.push({
-                    id: citationId,
-                    snippet: ann.text || "Medical reference",
-                    source,
-                  });
-                  nextId++;
-                }
-
-                const marker = `[${citationId}]`;
-                if (ann.text) {
-                  formattedText = formattedText.replace(ann.text, marker);
-                }
-              }
-
-              console.info(`[DOCUMENT_SEARCH] Result found: "${formattedText.substring(0, 100).replace(/\n/g, ' ')}..."`);
-              console.info(`[DOCUMENT_SEARCH] Total unique citations: ${uniqueCitations.length} (from ${text.annotations.length} annotations)`);
-
-              return {
-                text: formattedText,
-                citations: uniqueCitations,
-              };
-            }
-          }
-          return { text: "No results", citations: [] };
-        },
-      },
+      documentSearch: documentSearch(),
     } : {},
     // Save messages when the full multi-step stream completes
     onFinish: async () => {

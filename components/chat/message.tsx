@@ -137,7 +137,7 @@ const PurePreviewMessage = ({
       const { toolCallId, state } = part;
 
       if (state === "output-available") {
-        const citations = part.output.citations || [];
+        const citations = (part.output as any).citations || [];
         return (
           <div
             className="flex flex-col gap-2 rounded-xl border border-blue-200/50 bg-blue-50/30 p-4 dark:border-blue-900/30 dark:bg-blue-950/20"
@@ -150,7 +150,7 @@ const PurePreviewMessage = ({
               </span>
             </div>
             <MessageResponse citations={citations}>
-              {part.output.text}
+              {(part.output as any).text}
             </MessageResponse>
 
             {citations.length > 0 && (
