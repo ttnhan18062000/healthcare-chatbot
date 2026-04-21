@@ -23,12 +23,60 @@ export const documentSearch = () =>
       });
 
       if (run.status === "completed") {
+        // Fetch run steps to extract verbatim text segments from file_search tool calls
+        const steps = await openaiClient.beta.threads.runs.steps.list(run.id, {
+          thread_id: thread.id,
+        });
+        const fileContentMap = new Map<string, string[]>(); // file_id -> combined verbatim segments
+
+        for (const step of steps.data) {
+          if (step.step_details.type === "tool_calls") {
+            for (const toolCall of (step.step_details as any).tool_calls) {
+              if (toolCall.type === "file_search" && toolCall.file_search?.results) {
+                for (const res of toolCall.file_search.results) {
+                  const verbatim = res.content
+                    ?.map((c: any) => c.text?.value || c.text || "")
+                    .filter(Boolean)
+                    .join("\n\n---\n\n");
+                  if (verbatim) {
+                    const existing = fileContentMap.get(res.file_id) || [];
+                    fileContentMap.set(res.file_id, [...existing, verbatim]);
+                  }
+                }
+              }
+            }
+          }
+        }
         const messages = await openaiClient.beta.threads.messages.list(thread.id);
-        if (messages.data[0]?.content[0]?.type === "text") {
-          const text = messages.data[0].content[0].text;
+        const lastMessage = messages.data[0];
+
+        if (lastMessage?.content[0]?.type === "text") {
+          const text = lastMessage.content[0].text;
+          console.info(`[DOCUMENT_SEARCH] Raw response from search-assistant: "${text.value.substring(0, 300).replace(/\n/g, " ")}..."`);
           let formattedText = text.value;
 
-          // Deduplicate citations by source filename
+          // 1. Collect all unique file IDs that need metadata retrieval
+          const uniqueFileIds = [...new Set((text.annotations as any[])
+            .map(ann => ann.file_citation?.file_id)
+            .filter(Boolean))] as string[];
+
+          // 2. Fetch all file metadata in parallel to reduce latency
+          const fileMetadataMap = new Map<string, string>();
+          if (uniqueFileIds.length > 0) {
+            console.info(`[DOCUMENT_SEARCH] Fetching metadata for ${uniqueFileIds.length} files in parallel...`);
+            await Promise.all(
+              uniqueFileIds.map(async (fileId) => {
+                try {
+                  const file = await openaiClient.files.retrieve(fileId);
+                  fileMetadataMap.set(fileId, file.filename);
+                } catch (e) {
+                  console.warn(`[DOCUMENT_SEARCH] Could not retrieve filename for ${fileId}`);
+                }
+              })
+            );
+          }
+
+          // 3. Deduplicate citations by source filename
           const sourceMap = new Map<string, string>(); // filename -> citation id
           const uniqueCitations: Array<{
             id: string;
@@ -38,17 +86,8 @@ export const documentSearch = () =>
           let nextId = 1;
 
           for (const ann of text.annotations as any[]) {
-            let source = "Knowledge Base";
-            if (ann.file_citation?.file_id) {
-              try {
-                const file = await openaiClient.files.retrieve(
-                  ann.file_citation.file_id
-                );
-                source = file.filename;
-              } catch {
-                /* fallback to Knowledge Base */
-              }
-            }
+            const fileId = ann.file_citation?.file_id;
+            const source = (fileId ? fileMetadataMap.get(fileId) : null) || "Knowledge Base";
 
             let citationId: string;
             if (sourceMap.has(source)) {
@@ -56,9 +95,13 @@ export const documentSearch = () =>
             } else {
               citationId = nextId.toString();
               sourceMap.set(source, citationId);
+              const verbatimChunks = ann.file_citation?.file_id 
+                ? fileContentMap.get(ann.file_citation.file_id)
+                : null;
+              
               uniqueCitations.push({
                 id: citationId,
-                snippet: ann.text || "Medical reference",
+                snippet: verbatimChunks?.join("\n\n--- NEXT SEGMENT ---\n\n") || ann.text || "Medical reference",
                 source,
               });
               nextId++;

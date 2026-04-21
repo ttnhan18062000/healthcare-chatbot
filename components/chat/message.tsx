@@ -21,6 +21,14 @@ import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
 import { BatchDownloadButton } from "./batch-download-button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -140,37 +148,51 @@ const PurePreviewMessage = ({
         const citations = (part.output as any).citations || [];
         return (
           <div
-            className="flex flex-col gap-2 rounded-xl border border-blue-200/50 bg-blue-50/30 p-4 dark:border-blue-900/30 dark:bg-blue-950/20"
+            className="flex flex-col gap-3 rounded-xl border border-blue-200/50 bg-blue-50/30 p-4 shadow-sm dark:border-blue-900/30 dark:bg-blue-950/20"
             key={toolCallId}
           >
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-              <FileIcon size={14} />
-              <span className="text-xs font-semibold uppercase tracking-wider">
-                Kết quả tra cứu y tế
-              </span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                <FileIcon size={14} />
+                <span className="text-[11px] font-bold uppercase tracking-widest">
+                  Cơ sở dữ liệu y tế
+                </span>
+              </div>
+              <div className="rounded-full bg-blue-100/50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+                {citations.length} tài liệu
+              </div>
             </div>
-            <MessageResponse citations={citations}>
-              {(part.output as any).text}
-            </MessageResponse>
 
             {citations.length > 0 && (
-              <div className="mt-3 flex flex-col gap-1 border-t border-blue-200/50 pt-2 dark:border-blue-900/30">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-500/70">
-                  Nguồn tài liệu:
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {citations.map((c: any) => (
-                    <div
-                      key={c.id}
-                      className="flex items-center gap-1.5 rounded-md bg-blue-100/50 px-2 py-1 text-[10px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                    >
-                      <span className="font-bold">[{c.id}]</span>
-                      <span className="max-w-[150px] truncate opacity-80">
-                        {c.source}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {citations.map((c: any) => (
+                  <Dialog key={c.id}>
+                    <DialogTrigger asChild>
+                      <button className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200/50 bg-white/50 px-2.5 py-1.5 text-[10px] transition-all hover:bg-blue-100/50 hover:shadow-sm dark:border-blue-800/50 dark:bg-blue-900/20 dark:hover:bg-blue-800/40">
+                        <span className="font-bold text-blue-600 dark:text-blue-400">
+                          [{c.id}]
+                        </span>
+                        <span className="max-w-[120px] truncate font-medium text-foreground">
+                          {c.source}
+                        </span>
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl gap-4">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                          <FileIcon size={18} />
+                          Trích dẫn: {c.source}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs uppercase tracking-wider text-muted-foreground">
+                          Nội dung trích xuất từ cơ sở dữ liệu y tế
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="mt-2 max-h-[60vh] overflow-y-auto rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap italic">
+                        {c.snippet}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                ))}
               </div>
             )}
           </div>
