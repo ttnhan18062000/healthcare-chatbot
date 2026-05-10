@@ -6,7 +6,9 @@ import {
   getChatById,
   saveChat,
   saveMessages,
+  updateChatMode,
 } from "@/lib/db/queries";
+
 import { ChatbotError } from "@/lib/errors";
 import { postRequestBodySchema, type PostRequestBody } from "./schema";
 import {
@@ -30,19 +32,28 @@ Bạn là “Trợ lý hỗ trợ người chăm sóc sa sút trí tuệ” dàn
 •	Cung cấp kiến thức dễ hiểu, thực tế, phù hợp văn hóa; hướng dẫn kỹ năng chăm sóc an toàn.
 •	Hỗ trợ giảm căng thẳng bằng các kỹ thuật đơn giản (thở, lập kế hoạch, giải quyết vấn đề, tự chăm sóc).
 => Giúp người chăm sóc: hiểu bệnh, xử trí tình huống thường gặp, giảm căng thẳng, tăng an toàn. Ưu tiên hành động: đưa bước làm cụ thể “làm ngay hôm nay”.
+
 STYLE & TONE (VN)
 •	Giọng: ấm áp, gần gũi, tôn trọng, không phán xét. Tránh văn phong “sách vở”.
 •	Xưng hô mặc định: “mình–bạn” (hoặc “em–anh/chị” nếu người dùng tự xưng phù hợp). Không đổi xưng hô giữa chừng.
-•	Mở đầu: khi người dùng than mệt/lo/stress, luôn có 1 câu xác nhận cảm xúc (validation) sâu sắc và đồng cảm.
+•	Mở đầu: Luôn bắt đầu bằng một câu xác nhận cảm xúc (validation) sâu sắc và đồng cảm (ví dụ: "Mình rất hiểu cảm giác của bạn...", "Nghe bạn kể mình thấy bạn đã rất vất vả...").
 •	Câu chữ: **đầy đủ, chi tiết và có chiều sâu**. Tránh trả lời quá ngắn gọn. Hãy giải thích rõ ràng các bước thực hiện.
-•	Cấu trúc: Tổ chức câu trả lời một cách logic (thường gồm: Thấu hiểu -> Giải pháp chi tiết -> Lời khuyên/Hành động cụ thể). Sử dụng danh sách (bullet points) để dễ theo dõi.
+•	Cấu trúc: Tổ chức câu trả lời một cách logic: Thấu hiểu -> Giải pháp chi tiết -> Lời khuyên/Hành động cụ thể.
+
 STRICT RAG MODE (VN)
 •	CHỈ trả lời dựa trên nội dung có trong Knowledge. TUYỆT ĐỐI KHÔNG dùng kiến thức chung.
 •	BẮT BUỘC sử dụng công cụ documentSearch ngay lập tức để tìm thông tin chính xác.
-•	Sau khi nhận được kết quả từ documentSearch, bạn BẮT BUỘC phải viết câu trả lời tổng hợp **đầy đủ và chi tiết** bằng chính lời của bạn dựa trên toàn bộ dữ liệu trả về. Nếu Knowledge có nhiều thông tin, hãy tổng hợp hết để giúp ích tối đa cho người dùng.
-•	Bạn BẮT BUỘC phải trích dẫn nguồn cho từng khẳng định bằng cách giữ nguyên các dấu ngoặc vuông chứa số thứ tự trích dẫn (ví dụ [1], [2]) trong văn bản. **Hãy cực kỳ cẩn thận không để sót các dấu trích dẫn này.**
-•	Mọi ý chính phải kèm Nguồn theo format: Nguồn: <tên file> – <mục/heading> ở cuối câu hoặc đoạn.
-•	Nếu Knowledge không có thông tin, hãy trả lời: “Mình không thể trả lời câu hỏi của bạn dựa trên cơ sở dữ liệu hiện có.” - Tuy nhiên, hãy cố gắng gợi ý người dùng cách tìm kiếm khác hoặc động viên họ.
+•	Sau khi nhận được kết quả từ documentSearch, bạn BẮT BUỘC phải viết câu trả lời tổng hợp dựa trên dữ liệu đó.
+•	**TRÍCH DẪN (QUAN TRỌNG)**: Bạn phải giữ nguyên các dấu ngoặc vuông [1], [2], ... từ kết quả tìm kiếm và đặt chúng ngay sau mỗi khẳng định hoặc đoạn văn tương ứng. KHÔNG được bỏ sót bất kỳ dấu trích dẫn nào.
+•	**NGUỒN**: Mọi ý chính phải kèm Nguồn theo format: Nguồn: <tên file> – <mục/heading> ở cuối câu hoặc đoạn.
+
+CHECKLIST TRƯỚC KHI TRẢ LỜI:
+1. Mình đã có câu đồng cảm mở đầu chưa?
+2. Mình đã gọi documentSearch chưa?
+3. Mỗi ý mình viết đã có dấu trích dẫn [N] đi kèm chưa?
+4. Mình đã ghi rõ Nguồn ở cuối chưa?
+5. Nếu không có thông tin, mình đã nói rõ mình không trả lời được dựa trên Knowledge chưa?
+
 SAFETY - Chính sách an toàn
 •	Không đưa lời khuyên thay thế khám bệnh hay chẩn đoán.
 •	Luôn nhắc: bạn không thay thế bác sĩ/nhà trị liệu.`;
@@ -109,7 +120,13 @@ export async function POST(request: Request) {
   // 2. Determine Mode (Priority: requestMode selection > DB state)
   const mode = (isTestBypass || requestMode === "rag" || chat?.mode === "rag") ? "rag" : "normal";
   
+  // Persistence: Update chat mode in DB if it changed (e.g. switched mid-session)
+  if (chat && chat.mode !== mode && !isTestBypass) {
+    await updateChatMode({ id: chatId, mode });
+  }
+
   console.info(`[CHAT_API] Mode Decision - Request: ${requestMode}, DB: ${chat?.mode || 'none'}, Final: ${mode}`);
+
 
   // 3. Save User Message
   if (!isTestBypass && (!chat || !messages || messages.length === 0)) {
@@ -206,10 +223,47 @@ export async function POST(request: Request) {
   const result = streamText({
     model: openai("gpt-4o"),
     system: mode === "rag" ? SYSTEM_PROMPT_RAG : SYSTEM_PROMPT_NORMAL,
-    messages: (messages || []).map((m: any) => ({
-      role: m.role as any,
-      content: m.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n"),
-    })),
+    messages: (messages || []).map((m: any) => {
+      const textContent = m.parts
+        .filter((p: any) => p.type === "text")
+        .map((p: any) => p.text)
+        .join("\n");
+      
+      const toolCalls = m.parts
+        .filter((p: any) => p.type === "tool-call")
+        .map((p: any) => ({
+          type: "tool-call",
+          toolCallId: p.toolCallId,
+          toolName: p.toolName,
+          args: p.args,
+        }));
+
+      const toolResults = m.parts
+        .filter((p: any) => p.type === "tool-result")
+        .map((p: any) => ({
+          type: "tool-result",
+          toolCallId: p.toolCallId,
+          toolName: p.toolName,
+          result: p.result,
+        }));
+
+      if (toolCalls.length > 0 || toolResults.length > 0) {
+        return {
+          role: m.role as any,
+          content: [
+            ...(textContent ? [{ type: "text", text: textContent }] : []),
+            ...toolCalls,
+            ...toolResults,
+          ],
+        };
+      }
+
+      return {
+        role: m.role as any,
+        content: textContent,
+      };
+    }),
+
     stopWhen: mode === "rag" ? stepCountIs(5) : stepCountIs(1),
     tools: mode === "rag" ? {
       documentSearch: documentSearch(),
@@ -221,8 +275,9 @@ export async function POST(request: Request) {
         messages: response.messages.map((msg, index) => ({
           id: (msg as any).id || `${chatId}-${Date.now()}-${index}`,
           chatId,
-          role: msg.role === "tool" ? "assistant" : msg.role as any,
+          role: msg.role as any,
           parts: msg.content as any,
+
           attachments: [],
           createdAt: new Date(),
         })),

@@ -599,6 +599,20 @@ export async function updateChatTitleById({
   }
 }
 
+export async function updateChatMode({
+  id,
+  mode,
+}: {
+  id: string;
+  mode: "normal" | "rag";
+}) {
+  try {
+    return await db.update(chat).set({ mode }).where(eq(chat.id, id));
+  } catch (_error) {
+    throw new ChatbotError("bad_request:database", "Failed to update chat mode");
+  }
+}
+
 export async function updateChatAssistantDetails({
   chatId,
   assistantId,
