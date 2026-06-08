@@ -3,6 +3,7 @@
 import { PanelLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { memo } from "react";
+import { useLanguage } from "@/contexts/language-context";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { VercelIcon } from "./icons";
@@ -20,6 +21,7 @@ function PureChatHeader({
   chatMode: "normal" | "rag";
 }) {
   const { state, toggleSidebar, isMobile } = useSidebar();
+  const { t } = useLanguage();
 
   if (state === "collapsed" && !isMobile) {
     return null;
@@ -37,9 +39,9 @@ function PureChatHeader({
       </Button>
 
       <div className="flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-        <span className="opacity-60">Mode:</span>
+        <span className="opacity-60">{t.header.mode}</span>
         <span className="text-foreground">
-          {chatMode === "rag" ? "Document" : "Normal"}
+          {chatMode === "rag" ? t.header.document : t.header.normal}
         </span>
       </div>
 

@@ -1,5 +1,7 @@
-import Form from "next/form";
+"use client";
 
+import Form from "next/form";
+import { useLanguage } from "@/contexts/language-context";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
@@ -14,6 +16,8 @@ export function AuthForm({
   children: React.ReactNode;
   defaultEmail?: string;
 }) {
+  const { t } = useLanguage();
+
   return (
     <Form action={action} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
@@ -35,7 +39,7 @@ export function AuthForm({
 
       <div className="flex flex-col gap-2">
         <Label className="font-normal text-muted-foreground" htmlFor="password">
-          Password
+          {t.auth.password}
         </Label>
         <Input
           className="h-10 rounded-lg border-border/50 bg-muted/50 text-sm transition-colors focus:border-foreground/20 focus:bg-muted"

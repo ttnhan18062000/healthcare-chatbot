@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { memo } from "react";
+import { useLanguage } from "@/contexts/language-context";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Chat } from "@/lib/db/schema";
 import {
@@ -41,6 +42,7 @@ const PureChatItem = ({
     chatId: chat.id,
     initialVisibilityType: chat.visibility,
   });
+  const { t } = useLanguage();
 
   return (
     <SidebarMenuItem>
@@ -69,7 +71,7 @@ const PureChatItem = ({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer">
               <ShareIcon />
-              <span>Share</span>
+              <span>{t.historyItem.share}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
               <DropdownMenuSubContent>
@@ -81,7 +83,7 @@ const PureChatItem = ({
                 >
                   <div className="flex flex-row items-center gap-2">
                     <LockIcon size={12} />
-                    <span>Private</span>
+                    <span>{t.historyItem.private}</span>
                   </div>
                   {visibilityType === "private" ? (
                     <CheckCircleFillIcon />
@@ -95,7 +97,7 @@ const PureChatItem = ({
                 >
                   <div className="flex flex-row items-center gap-2">
                     <GlobeIcon />
-                    <span>Public</span>
+                    <span>{t.historyItem.public}</span>
                   </div>
                   {visibilityType === "public" ? <CheckCircleFillIcon /> : null}
                 </DropdownMenuItem>
@@ -108,7 +110,7 @@ const PureChatItem = ({
             variant="destructive"
           >
             <TrashIcon />
-            <span>Delete</span>
+            <span>{t.historyItem.delete}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

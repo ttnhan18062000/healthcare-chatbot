@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import useSWR from "swr";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
+import { useLanguage } from "@/contexts/language-context";
 import { useActiveChat } from "@/hooks/use-active-chat";
 import {
   ModelSelector,
@@ -110,6 +111,7 @@ function PureMultimodalInput({
 }) {
   const router = useRouter();
   const { setTheme, resolvedTheme } = useTheme();
+  const { t } = useLanguage();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
   const hasAutoFocused = useRef(false);
@@ -166,7 +168,7 @@ function PureMultimodalInput({
         setMessages(() => []);
         break;
       case "rename":
-        toast("Rename is available from the sidebar chat menu.");
+        toast(t.input.renameFromSidebar);
         break;
       case "model": {
         const modelBtn = document.querySelector<HTMLButtonElement>(
@@ -179,30 +181,30 @@ function PureMultimodalInput({
         setTheme(resolvedTheme === "dark" ? "light" : "dark");
         break;
       case "delete":
-        toast("Delete this chat?", {
+        toast(t.input.deleteChat, {
           action: {
-            label: "Delete",
+            label: t.input.delete,
             onClick: () => {
               fetch(
                 `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat?id=${chatId}`,
                 { method: "DELETE" }
               );
               router.push("/");
-              toast.success("Chat deleted");
+              toast.success(t.input.chatDeleted);
             },
           },
         });
         break;
       case "purge":
-        toast("Delete all chats?", {
+        toast(t.input.deleteAllChats, {
           action: {
-            label: "Delete all",
+            label: t.input.deleteAll,
             onClick: () => {
               fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/history`, {
                 method: "DELETE",
               });
               router.push("/");
-              toast.success("All chats deleted");
+              toast.success(t.input.allChatsDeleted);
             },
           },
         });
@@ -285,7 +287,7 @@ function PureMultimodalInput({
       const { error } = await response.json();
       toast.error(error);
     } catch (_error) {
-      toast.error("Failed to upload file, please try again!");
+      toast.error(t.input.uploadFailed);
     }
   }, []);
 
@@ -299,7 +301,7 @@ function PureMultimodalInput({
           const content = await file.text();
           const lines = content.split("\n").filter(l => l.trim().length > 0);
           if (lines.length > 100) {
-            toast.error(`The file "${file.name}" exceeds the 100-line limit for batch processing. Please upload a smaller file.`);
+            toast.error(`"${file.name}" vượt quá giới hạn 100 dòng. Vui lòng tải lên tệp nhỏ hơn.`);
             if (fileInputRef.current) fileInputRef.current.value = "";
             return;
           }
@@ -320,7 +322,7 @@ function PureMultimodalInput({
           ...successfullyUploadedAttachments,
         ]);
       } catch (_error) {
-        toast.error("Failed to upload files");
+        toast.error(t.input.uploadsFailed);
       } finally {
         setUploadQueue([]);
       }
@@ -366,7 +368,7 @@ function PureMultimodalInput({
           ...(successfullyUploadedAttachments as Attachment[]),
         ]);
       } catch (_error) {
-        toast.error("Failed to upload pasted image(s)");
+        toast.error(t.input.pastedImageFailed);
       } finally {
         setUploadQueue([]);
       }
@@ -388,7 +390,7 @@ function PureMultimodalInput({
     <div className={cn("relative flex w-full flex-col gap-4", className)}>
       {editingMessage && onCancelEdit && (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-          <span>Editing message</span>
+          <span>{t.input.editingMessage}</span>
           <button
             className="rounded px-1.5 py-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
             onMouseDown={(e) => {
@@ -397,7 +399,7 @@ function PureMultimodalInput({
             }}
             type="button"
           >
-            Cancel
+            {t.input.cancel}
           </button>
         </div>
       )}
@@ -451,7 +453,7 @@ function PureMultimodalInput({
           if (status === "ready" || status === "error") {
             submitForm();
           } else {
-            toast.error("Please wait for the model to finish its response!");
+            toast.error(t.input.waitModel);
           }
         }}
       >
@@ -526,7 +528,7 @@ function PureMultimodalInput({
             }
           }}
           placeholder={
-            editingMessage ? "Edit your message..." : "Ask anything..."
+            editingMessage ? t.input.editPlaceholder : t.input.placeholder
           }
           ref={textareaRef}
           value={input}
@@ -652,6 +654,7 @@ function PureModelSelectorCompact({
   onModelChange?: (modelId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { t } = useLanguage();
   const { data: modelsData } = useSWR(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
     (url: string) => fetch(url).then((r) => r.json()),
@@ -682,7 +685,7 @@ function PureModelSelectorCompact({
         </Button>
       </ModelSelectorTrigger>
       <ModelSelectorContent>
-        <ModelSelectorInput placeholder="Search models..." />
+        <ModelSelectorInput placeholder={t.input.searchModels} />
         <ModelSelectorList>
           {(() => {
             const curatedIds = new Set(chatModels.map((m) => m.id));
@@ -746,7 +749,7 @@ function PureModelSelectorCompact({
               <ModelSelectorGroup
                 heading={
                   key === "_available"
-                    ? "Available"
+                    ? t.input.available
                     : (providerNames[key] ?? key)
                 }
                 key={key}
@@ -816,6 +819,8 @@ function ModeSelector({
   chatMode: "normal" | "rag";
   setChatMode: (mode: "normal" | "rag") => void;
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="flex items-center gap-1.5 rounded-lg border border-border/40 bg-muted/30 p-0.5">
       <Button
@@ -829,7 +834,7 @@ function ModeSelector({
         size="sm"
         variant="ghost"
       >
-        Normal
+        {t.input.normal}
       </Button>
       <Button
         className={cn(
@@ -842,7 +847,7 @@ function ModeSelector({
         size="sm"
         variant="ghost"
       >
-        Document
+        {t.input.document}
       </Button>
     </div>
   );

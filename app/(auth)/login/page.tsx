@@ -8,12 +8,14 @@ import { useActionState, useEffect, useState } from "react";
 import { AuthForm } from "@/components/chat/auth-form";
 import { SubmitButton } from "@/components/chat/submit-button";
 import { toast } from "@/components/chat/toast";
+import { useLanguage } from "@/contexts/language-context";
 import { type LoginActionState, login } from "../actions";
 
 export default function Page() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [isSuccessful, setIsSuccessful] = useState(false);
+  const { t } = useLanguage();
 
   const [state, formAction] = useActionState<LoginActionState, FormData>(
     login,
@@ -25,11 +27,11 @@ export default function Page() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: router and updateSession are stable refs
   useEffect(() => {
     if (state.status === "failed") {
-      toast({ type: "error", description: "Invalid credentials!" });
+      toast({ type: "error", description: t.auth.invalidCredentials });
     } else if (state.status === "invalid_data") {
       toast({
         type: "error",
-        description: "Failed validating your submission!",
+        description: t.auth.validationFailed,
       });
     } else if (state.status === "success") {
       setIsSuccessful(true);
@@ -45,19 +47,17 @@ export default function Page() {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-      <p className="text-sm text-muted-foreground">
-        Sign in to your account to continue
-      </p>
+      <h1 className="text-2xl font-semibold tracking-tight">{t.auth.loginTitle}</h1>
+      <p className="text-sm text-muted-foreground">{t.auth.loginSubtitle}</p>
       <AuthForm action={handleSubmit} defaultEmail={email}>
-        <SubmitButton isSuccessful={isSuccessful}>Sign in</SubmitButton>
+        <SubmitButton isSuccessful={isSuccessful}>{t.auth.signIn}</SubmitButton>
         <p className="text-center text-[13px] text-muted-foreground">
-          {"No account? "}
+          {`${t.auth.noAccount} `}
           <Link
             className="text-foreground underline-offset-4 hover:underline"
             href="/register"
           >
-            Sign up
+            {t.auth.signUp}
           </Link>
         </p>
       </AuthForm>
