@@ -96,6 +96,63 @@ test.describe("RAG Mode Verification", () => {
     ).not.toBeVisible();
   });
 
+  test("Document citations open their retrieved source in a side panel", async ({ page }) => {
+    await page.route("**/api/chat", async (route) => {
+      const stream = [
+        { type: "start", messageId: "assistant-citation" },
+        { type: "start-step" },
+        {
+          type: "tool-input-available",
+          toolCallId: "document-search-citation",
+          toolName: "documentSearch",
+          input: { query: "Cách giao tiếp với người sa sút trí tuệ?" },
+        },
+        {
+          type: "tool-output-available",
+          toolCallId: "document-search-citation",
+          output: {
+            text: "[1] Nguồn: Tai_lieu_cham_soc.pdf",
+            citations: [
+              {
+                id: "1",
+                source: "Tai_lieu_cham_soc.pdf",
+                snippet: "Hãy sử dụng giọng nói nhẹ nhàng và các từ quen thuộc.",
+              },
+            ],
+          },
+        },
+        { type: "finish-step" },
+        { type: "text-start", id: "citation-answer" },
+        {
+          type: "text-delta",
+          id: "citation-answer",
+          delta: "Hãy sử dụng giọng nói nhẹ nhàng. [1]",
+        },
+        { type: "text-end", id: "citation-answer" },
+        { type: "finish-step" },
+        { type: "finish", finishReason: "stop" },
+      ]
+        .map((part) => `data: ${JSON.stringify(part)}\n\n`)
+        .join("");
+
+      await route.fulfill({
+        body: stream,
+        contentType: "text/event-stream",
+        headers: { "x-vercel-ai-ui-message-stream": "v1" },
+      });
+    });
+
+    await page.getByRole("button", { name: "Tài liệu" }).click();
+    await page.getByTestId("multimodal-input").fill("Cách giao tiếp với người sa sút trí tuệ?");
+    await page.getByTestId("send-button").click();
+
+    await page.getByRole("button", { name: "Mở tài liệu: Tai_lieu_cham_soc.pdf" }).click();
+    const referencePanel = page.locator('[data-slot="sheet-content"]');
+    await expect(referencePanel).toBeVisible();
+    await expect(referencePanel).toContainText("Tai_lieu_cham_soc.pdf");
+    await expect(referencePanel).toContainText("Hãy sử dụng giọng nói nhẹ nhàng và các từ quen thuộc.");
+  });
+
   test("Document mode continues with stored user and assistant history", async ({ page }) => {
     const storedMessages = [
       {

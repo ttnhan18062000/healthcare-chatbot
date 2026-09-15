@@ -16,6 +16,7 @@ REPORT_FILE = os.path.join(DATA_DIR, "validation_report.md")
 
 def is_pass(metric_name, feedback_value):
     """Unified check for pass status based on metric name and descriptive feedback."""
+    if feedback_value == "Not applicable": return True
     v_lower = feedback_value.lower()
     if metric_name == "sufficient_length": return "ok" in v_lower
     if metric_name == "tone_ok": return "correct" in v_lower
@@ -24,6 +25,7 @@ def is_pass(metric_name, feedback_value):
 def parse_stream(response):
     """Parses the Vercel AI SDK DataStream format to extract the final text."""
     full_text = ""
+    used_document_search = False
     for line in response.iter_lines():
         if not line:
             continue
@@ -33,21 +35,32 @@ def parse_stream(response):
                 chunk = json.loads(line_str[6:])
                 if chunk.get("type") == "text-delta":
                     full_text += chunk.get("delta", chunk.get("textDelta", ""))
+                if (
+                    chunk.get("type") == "tool-input-available"
+                    and chunk.get("toolName") == "documentSearch"
+                ):
+                    used_document_search = True
             except json.JSONDecodeError:
                 continue
-    return full_text
+    return full_text, used_document_search
 
-def validate_response(actual, expected, sample, latency):
+def validate_response(actual, expected, sample, latency, used_document_search):
     """Performs automated checks for tone, citations, and content."""
     
     metrics = {
-        "citation_markers": "Found citation brackets []" if ("[" in actual and "]" in actual) or ("【" in actual and "】" in actual) else "Missing citation brackets []",
-        "source_footer": "Found 'Nguồn:' footer" if "Nguồn:" in actual else "Missing 'Nguồn:' footer",
+        "citation_markers": (
+            "Found citation brackets []" if ("[" in actual and "]" in actual) or ("【" in actual and "】" in actual) else "Missing citation brackets []"
+        ) if used_document_search else "Not applicable",
+        "source_footer": (
+            "Found 'Nguồn:' footer" if "Nguồn:" in actual else "Missing 'Nguồn:' footer"
+        ) if used_document_search else "Not applicable",
         "tone_ok": "Correct 'mình-bạn' tone" if ("bạn" in actual.lower() and "mình" in actual.lower()) else "Missing 'mình' or 'bạn' tone",
         "emotional_validation": "Found empathetic validation" if any(phrase in actual.lower() for phrase in ["hiểu", "chia sẻ", "thông cảm", "biết bạn", "vất vả", "lo lắng", "thương", "đồng cảm", "bên cạnh bạn"]) else "Missing emotional validation",
 
         "sufficient_length": f"Length OK ({len(actual)} chars)" if len(actual) > 300 else f"Too short ({len(actual)} chars)",
-        "has_structure": "Markdown structure found" if (("- " in actual or "1. " in actual or "###" in actual) and ("Thấu hiểu" in actual or "Giải pháp" in actual or "Lời khuyên" in actual)) else "Missing lists, headers or required sections",
+        "has_structure": (
+            "Markdown structure found" if all(section in actual for section in ["### Thấu hiểu", "### Giải pháp", "### Hành động hôm nay"]) else "Missing required RAG sections"
+        ) if used_document_search else "Not applicable",
     }
 
 
@@ -109,14 +122,21 @@ def run_validation(sample_count=5):
                 print(f"  FAILED: Status {response.status_code}")
                 continue
                 
-            actual_text = parse_stream(response)
+            actual_text, used_document_search = parse_stream(response)
             latency = time.time() - start_time
             
-            evaluation = validate_response(actual_text, sample["expected_output"], sample, latency)
+            evaluation = validate_response(
+                actual_text,
+                sample["expected_output"],
+                sample,
+                latency,
+                used_document_search,
+            )
             
             # Build augmented object
             enriched_sample = sample.copy()
             enriched_sample["actual_output"] = actual_text
+            enriched_sample["used_document_search"] = used_document_search
             enriched_sample["validation"] = evaluation
             
             enriched_results.append(enriched_sample)

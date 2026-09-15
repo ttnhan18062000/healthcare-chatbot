@@ -22,13 +22,13 @@ import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
 import { BatchDownloadButton } from "./batch-download-button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -187,9 +187,12 @@ const PurePreviewMessage = ({
             {citations.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {citations.map((c: any) => (
-                  <Dialog key={c.id}>
-                    <DialogTrigger asChild>
-                      <button className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200/50 bg-white/50 px-2.5 py-1.5 text-[10px] transition-all hover:bg-blue-100/50 hover:shadow-sm dark:border-blue-800/50 dark:bg-blue-900/20 dark:hover:bg-blue-800/40">
+                  <Sheet key={c.id}>
+                    <SheetTrigger asChild>
+                      <button
+                        aria-label={`Mở tài liệu: ${c.source}`}
+                        className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200/50 bg-white/50 px-2.5 py-1.5 text-[10px] transition-all hover:bg-blue-100/50 hover:shadow-sm dark:border-blue-800/50 dark:bg-blue-900/20 dark:hover:bg-blue-800/40"
+                      >
                         <span className="font-bold text-blue-600 dark:text-blue-400">
                           [{c.id}]
                         </span>
@@ -197,22 +200,25 @@ const PurePreviewMessage = ({
                           {c.source}
                         </span>
                       </button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl gap-4">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                    </SheetTrigger>
+                    <SheetContent className="w-full gap-4 sm:max-w-xl">
+                      <SheetHeader>
+                        <SheetTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                           <FileIcon size={18} />
-                          Trích dẫn: {c.source}
-                        </DialogTitle>
-                        <DialogDescription className="text-xs uppercase tracking-wider text-muted-foreground">
+                          Tài liệu tham khảo
+                        </SheetTitle>
+                        <SheetDescription className="break-all text-xs uppercase tracking-wider text-muted-foreground">
+                          {c.source}
+                        </SheetDescription>
+                        <SheetDescription className="text-xs text-muted-foreground">
                           Nội dung trích xuất từ cơ sở dữ liệu y tế
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="mt-2 max-h-[60vh] overflow-y-auto rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap italic">
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="mx-6 mb-6 max-h-[calc(100vh-13rem)] overflow-y-auto rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed whitespace-pre-wrap italic">
                         {c.snippet}
                       </div>
-                    </DialogContent>
-                  </Dialog>
+                    </SheetContent>
+                  </Sheet>
                 ))}
               </div>
             )}

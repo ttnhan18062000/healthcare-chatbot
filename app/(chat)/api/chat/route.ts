@@ -57,11 +57,10 @@ Bước 1 — Đọc toàn bộ lịch sử hội thoại để hiểu câu hỏ
 Bước 2 — Nếu thuộc trường hợp 1, 2 hoặc 3, trả lời phù hợp rồi DỪNG; không gọi công cụ trong lượt này.
 Bước 3 — Nếu thuộc trường hợp 4, gọi documentSearch một lần với truy vấn cụ thể, có thể diễn đạt độc lập dựa trên ngữ cảnh hội thoại.
 Bước 4 — Đánh giá kết quả tra cứu:
-• Nếu đủ bằng chứng: tổng hợp câu trả lời và trích dẫn nguồn.
-• Nếu kết quả chưa phù hợp nhưng có thể cải thiện truy vấn từ thông tin người dùng đã cung cấp: được phép tinh chỉnh và gọi documentSearch thêm ĐÚNG MỘT lần.
+• Một lần documentSearch có thể trả về nhiều tài liệu. Tổng hợp các nguồn phù hợp và trích dẫn từng ý tương ứng.
 • Nếu thiếu thông tin chỉ người dùng mới cung cấp được: hỏi một câu làm rõ rồi dừng, không tự suy đoán và không tra cứu lặp lại.
 • Nếu tài liệu không có bằng chứng phù hợp: nói rõ giới hạn của cơ sở tài liệu rồi dừng.
-Bước 5 — Không gọi documentSearch quá hai lần trong một lượt và không tiếp tục gọi công cụ sau khi đã có đủ bằng chứng.
+Bước 5 — Chỉ gọi documentSearch một lần trong một lượt và không tiếp tục gọi công cụ sau khi đã có kết quả.
 
 CỔNG PHẠM VI CÓ CẤU TRÚC
 • Ở bước đầu tiên, luôn gọi ragScopeCheck. Đây là kiểm tra cục bộ, KHÔNG tra cứu hay gửi dữ liệu tới kho tài liệu.
@@ -69,10 +68,12 @@ CỔNG PHẠM VI CÓ CẤU TRÚC
 • Các câu hỏi tổng quát nhưng rõ và cần kiến thức, ví dụ “Sa sút trí tuệ là gì?”, thuộc search chứ không phải clarify.
 
 GROUNDING SAU KHI TRA CỨU
+FORMAT BẮT BUỘC SAU documentSearch: Toàn bộ câu trả lời phải bắt đầu bằng đề mục “### Thấu hiểu” và phải có đúng ba đề mục “### Thấu hiểu”, “### Giải pháp”, “### Hành động hôm nay” theo thứ tự này. Không thay thế các đề mục bằng đánh số hoặc tên khác. Kết thúc bằng một hoặc nhiều dòng “Nguồn:”.
 •	Không bổ sung kiến thức chung hoặc suy đoán ngoài kết quả documentSearch.
 •	Nếu kết quả không có thông tin phù hợp, nói rõ rằng cơ sở tài liệu hiện không đủ để trả lời; không tự điền phần thiếu.
 •	**TRÍCH DẪN (QUAN TRỌNG)**: Bạn phải giữ nguyên các dấu ngoặc vuông [1], [2], ... từ kết quả tìm kiếm và đặt chúng ngay sau mỗi khẳng định hoặc đoạn văn tương ứng. KHÔNG được bỏ sót bất kỳ dấu trích dẫn nào.
 •	**NGUỒN**: Mọi ý chính phải kèm Nguồn theo format: Nguồn: <tên file> – <mục/heading> ở cuối câu hoặc đoạn.
+•	Nếu đã dùng documentSearch, dùng đúng cấu trúc Markdown gồm các đề mục “### Thấu hiểu”, “### Giải pháp”, “### Hành động hôm nay”, rồi một hoặc nhiều dòng “Nguồn:”. Mỗi ý có bằng chứng phải có [N] tương ứng; có thể dùng nhiều tài liệu trong cùng câu trả lời.
 
 CHECKLIST TRƯỚC KHI TRẢ LỜI:
 1. Mình đã có câu đồng cảm mở đầu chưa?
@@ -306,7 +307,7 @@ export async function POST(request: Request) {
     stopWhen:
       mode === "rag"
         ? [
-            stepCountIs(4),
+            stepCountIs(5),
             ({ steps }) =>
               steps.some((step) =>
                 step.content.some(
@@ -376,17 +377,12 @@ export async function POST(request: Request) {
               };
             }
 
-            if (documentSearchCalls.length >= 2) {
+            if (documentSearchResults.length > 0) {
               return {
                 activeTools: [],
                 toolChoice: "none" as const,
               };
             }
-
-            return {
-              activeTools: ["documentSearch"],
-              toolChoice: "auto" as const,
-            };
           }
         : undefined,
   });
