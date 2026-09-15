@@ -5,7 +5,7 @@ import { getOrCreateAssistant, getOrCreateVectorStore, openai as openaiClient } 
 export const documentSearch = () =>
   tool({
     description:
-      "Search for raw medical data in healthcare documents. Returns raw excerpts and source metadata. You MUST always synthesize the results into your own written response after calling this tool.",
+      "Search healthcare documents for an in-scope, sufficiently specified dementia-care question that needs factual evidence. Do not use for out-of-scope requests, greetings, emotional acknowledgement, or when essential context is missing. Returns excerpts and source metadata that must exclusively ground the answer.",
     inputSchema: z.object({
       query: z.string().describe("The search query for medical information."),
     }),
