@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { tool } from "ai";
-import { getOrCreateAssistant, getOrCreateVectorStore, openai as openaiClient } from "../assistant";
+import { getOrCreateAssistant, openai as openaiClient } from "../assistant";
 
 export const documentSearch = () =>
   tool({
@@ -11,8 +11,14 @@ export const documentSearch = () =>
     }),
     execute: async ({ query }) => {
       console.info(`[DOCUMENT_SEARCH] Searching for: "${query}"`);
-      const vectorStoreId = await getOrCreateVectorStore();
       const assistant = await getOrCreateAssistant();
+      const vectorStoreId =
+        assistant.tool_resources?.file_search?.vector_store_ids?.[0];
+      if (!vectorStoreId) {
+        throw new Error(
+          "The configured OpenAI assistant has no document vector store."
+        );
+      }
       const thread = await openaiClient.beta.threads.create();
       await openaiClient.beta.threads.messages.create(thread.id, {
         role: "user",

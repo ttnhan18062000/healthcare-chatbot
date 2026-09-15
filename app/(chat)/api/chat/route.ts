@@ -339,19 +339,38 @@ export async function POST(request: Request) {
               };
             }
 
-            const hasSearched = steps.some((step) =>
-              step.toolResults.some(
+            const documentSearchCalls = steps.flatMap((step) =>
+              step.toolCalls.filter(
+                (call) => call.toolName === "documentSearch"
+              )
+            );
+            const documentSearchResults = steps.flatMap((step) =>
+              step.toolResults.filter(
                 (result) => result.toolName === "documentSearch"
               )
             );
 
-            if (!hasSearched) {
+            if (documentSearchCalls.length > documentSearchResults.length) {
+              return {
+                activeTools: [],
+                toolChoice: "none" as const,
+              };
+            }
+
+            if (documentSearchResults.length === 0) {
               return {
                 activeTools: ["documentSearch"],
                 toolChoice: {
                   type: "tool" as const,
                   toolName: "documentSearch" as const,
                 },
+              };
+            }
+
+            if (documentSearchCalls.length >= 2) {
+              return {
+                activeTools: [],
+                toolChoice: "none" as const,
               };
             }
 
