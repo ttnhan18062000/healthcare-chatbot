@@ -1,5 +1,9 @@
-import { streamText, createUIMessageStreamResponse, generateText, stepCountIs } from "ai";
-import { z } from "zod";
+import {
+  streamText,
+  createUIMessageStreamResponse,
+  generateText,
+  stepCountIs,
+} from "ai";
 import { auth } from "@/app/(auth)/auth";
 import {
   deleteChatById,
@@ -19,6 +23,7 @@ import {
   openai as openaiClient,
 } from "@/lib/ai/assistant";
 import { documentSearch } from "@/lib/ai/tools/document-search";
+import { ragScopeCheck } from "@/lib/ai/tools/rag-scope-check";
 import { openai } from "@ai-sdk/openai";
 import type { ChatMessage } from "@/lib/types";
 import { generateUUID } from "@/lib/utils";
@@ -61,6 +66,11 @@ Bước 4 — Đánh giá kết quả tra cứu:
 • Nếu thiếu thông tin chỉ người dùng mới cung cấp được: hỏi một câu làm rõ rồi dừng, không tự suy đoán và không tra cứu lặp lại.
 • Nếu tài liệu không có bằng chứng phù hợp: nói rõ giới hạn của cơ sở tài liệu rồi dừng.
 Bước 5 — Không gọi documentSearch quá hai lần trong một lượt và không tiếp tục gọi công cụ sau khi đã có đủ bằng chứng.
+
+CỔNG PHẠM VI CÓ CẤU TRÚC
+• Ở bước đầu tiên, luôn gọi ragScopeCheck. Đây là kiểm tra cục bộ, KHÔNG tra cứu hay gửi dữ liệu tới kho tài liệu.
+• Sau khi ragScopeCheck trả về, tuân thủ đúng decision. Chỉ gọi documentSearch khi decision là search.
+• Các câu hỏi tổng quát nhưng rõ và cần kiến thức, ví dụ “Sa sút trí tuệ là gì?”, thuộc search chứ không phải clarify.
 
 GROUNDING SAU KHI TRA CỨU
 •	Không bổ sung kiến thức chung hoặc suy đoán ngoài kết quả documentSearch.
@@ -297,10 +307,60 @@ export async function POST(request: Request) {
       };
     }),
 
-    stopWhen: mode === "rag" ? stepCountIs(3) : stepCountIs(1),
+    stopWhen: mode === "rag" ? stepCountIs(4) : stepCountIs(1),
     tools: mode === "rag" ? {
+      ragScopeCheck,
       documentSearch: documentSearch(),
     } : {},
+    prepareStep:
+      mode === "rag"
+        ? ({ stepNumber, steps }) => {
+            if (stepNumber === 0) {
+              return {
+                activeTools: ["ragScopeCheck"],
+                toolChoice: {
+                  type: "tool" as const,
+                  toolName: "ragScopeCheck" as const,
+                },
+              };
+            }
+
+            const scopeResult = steps
+              .flatMap((step) => step.toolResults)
+              .find((result) => result.toolName === "ragScopeCheck")
+              ?.output as
+              | { decision?: string; reason?: string; searchQuery?: string }
+              | undefined;
+
+            if (scopeResult?.decision !== "search") {
+              return {
+                activeTools: [],
+                toolChoice: "none" as const,
+              };
+            }
+
+            const hasSearched = steps.some((step) =>
+              step.toolResults.some(
+                (result) => result.toolName === "documentSearch"
+              )
+            );
+
+            if (!hasSearched) {
+              return {
+                activeTools: ["documentSearch"],
+                toolChoice: {
+                  type: "tool" as const,
+                  toolName: "documentSearch" as const,
+                },
+              };
+            }
+
+            return {
+              activeTools: ["documentSearch"],
+              toolChoice: "auto" as const,
+            };
+          }
+        : undefined,
   });
   return result.toUIMessageStreamResponse({
     generateMessageId: generateUUID,

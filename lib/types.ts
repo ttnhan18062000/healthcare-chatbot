@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { createDocument } from "./ai/tools/create-document";
 import { documentSearch } from "./ai/tools/document-search";
+import type { ragScopeCheck } from "./ai/tools/rag-scope-check";
 import type { getWeather } from "./ai/tools/get-weather";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { updateDocument } from "./ai/tools/update-document";
@@ -21,6 +22,7 @@ type requestSuggestionsTool = InferUITool<
   ReturnType<typeof requestSuggestions>
 >;
 type documentSearchTool = InferUITool<ReturnType<typeof documentSearch>>;
+type ragScopeCheckTool = InferUITool<typeof ragScopeCheck>;
 
 export type ChatTools = {
   getWeather: weatherTool;
@@ -28,6 +30,7 @@ export type ChatTools = {
   updateDocument: updateDocumentTool;
   requestSuggestions: requestSuggestionsTool;
   documentSearch: documentSearchTool;
+  ragScopeCheck: ragScopeCheckTool;
 };
 
 export type CustomUIDataTypes = {

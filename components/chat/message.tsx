@@ -150,6 +150,18 @@ const PurePreviewMessage = ({
       );
     }
 
+    if (type === "tool-ragScopeCheck") {
+      if (part.state === "input-streaming" || part.state === "input-available") {
+        return (
+          <div className="px-4 py-2 text-xs text-muted-foreground" key={key}>
+            <Shimmer>Đang xác định phạm vi câu hỏi...</Shimmer>
+          </div>
+        );
+      }
+
+      return null;
+    }
+
     if (type === "tool-documentSearch") {
       const { toolCallId, state } = part;
 
