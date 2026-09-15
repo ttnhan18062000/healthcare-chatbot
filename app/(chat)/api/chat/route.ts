@@ -4,9 +4,11 @@ import { auth } from "@/app/(auth)/auth";
 import {
   deleteChatById,
   getChatById,
+  getMessageById,
   saveChat,
   saveMessages,
   updateChatMode,
+  updateMessage,
 } from "@/lib/db/queries";
 
 import { ChatbotError } from "@/lib/errors";
@@ -18,6 +20,8 @@ import {
 } from "@/lib/ai/assistant";
 import { documentSearch } from "@/lib/ai/tools/document-search";
 import { openai } from "@ai-sdk/openai";
+import type { ChatMessage } from "@/lib/types";
+import { generateUUID } from "@/lib/utils";
 
 export const maxDuration = 60;
 
@@ -128,20 +132,32 @@ export async function POST(request: Request) {
   console.info(`[CHAT_API] Mode Decision - Request: ${requestMode}, DB: ${chat?.mode || 'none'}, Final: ${mode}`);
 
 
-  // 3. Save User Message
-  if (!isTestBypass && (!chat || !messages || messages.length === 0)) {
-    await saveMessages({
-      messages: [
-        {
-          id: message.id,
-          chatId: chatId,
-          role: "user",
-          parts: message.parts,
-          attachments: [],
-          createdAt: new Date(),
-        },
-      ],
-    });
+  // 3. Persist the current user turn in the same UI-message shape that is
+  // restored by /api/messages. The client sends the full conversation on each
+  // turn, so use the message ID to make retries and regenerations idempotent.
+  if (!isTestBypass) {
+    const [storedUserMessage] = await getMessageById({ id: message.id });
+
+    if (storedUserMessage) {
+      if (storedUserMessage.chatId !== chatId) {
+        return new ChatbotError("bad_request:api").toResponse();
+      }
+
+      await updateMessage({ id: message.id, parts: message.parts });
+    } else {
+      await saveMessages({
+        messages: [
+          {
+            id: message.id,
+            chatId,
+            role: "user",
+            parts: message.parts,
+            attachments: [],
+            createdAt: new Date(),
+          },
+        ],
+      });
+    }
   }
 
   const txtAttachment = message.parts.find(
@@ -268,25 +284,41 @@ export async function POST(request: Request) {
     tools: mode === "rag" ? {
       documentSearch: documentSearch(),
     } : {},
-    // Save messages when the full multi-step stream completes
-    onFinish: async () => {
-      const response = await result.response;
-      await saveMessages({
-        messages: response.messages.map((msg, index) => ({
-          id: (msg as any).id || `${chatId}-${Date.now()}-${index}`,
-          chatId,
-          role: msg.role as any,
-          parts: msg.content as any,
-
-          attachments: [],
-          createdAt: new Date(),
-        })),
-      });
-    },
+    prepareStep: mode === "rag"
+      ? ({ stepNumber }) =>
+          stepNumber === 0
+            ? {
+                toolChoice: {
+                  type: "tool" as const,
+                  toolName: "documentSearch" as const,
+                },
+              }
+            : undefined
+      : undefined,
   });
   return result.toUIMessageStreamResponse({
+    generateMessageId: generateUUID,
     headers: {
       'x-chatbot-mode': mode,
+    },
+    originalMessages: (messages || []) as ChatMessage[],
+    onFinish: async ({ isAborted, responseMessage }) => {
+      if (isTestBypass || isAborted) {
+        return;
+      }
+
+      await saveMessages({
+        messages: [
+          {
+            id: responseMessage.id,
+            chatId,
+            role: responseMessage.role,
+            parts: responseMessage.parts,
+            attachments: [],
+            createdAt: new Date(),
+          },
+        ],
+      });
     },
   });
 }

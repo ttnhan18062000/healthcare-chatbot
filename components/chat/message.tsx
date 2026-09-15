@@ -104,6 +104,17 @@ const PurePreviewMessage = ({
     { text: "", isStreaming: false, rendered: false }
   ) ?? { text: "", isStreaming: false, rendered: false };
 
+  const documentCitations = message.parts?.flatMap((part) => {
+    if (
+      part.type !== "tool-documentSearch" ||
+      part.state !== "output-available"
+    ) {
+      return [];
+    }
+
+    return (part.output as any).citations || [];
+  }) ?? [];
+
   const parts = message.parts?.map((part, index) => {
     const { type } = part;
     const key = `message-${message.id}-part-${index}`;
@@ -123,10 +134,6 @@ const PurePreviewMessage = ({
     }
 
     if (type === "text") {
-      const citations = (message as any).data?.flatMap((d: any) => 
-        Array.isArray(d) ? d.filter((item: any) => item && typeof item === 'object' && 'snippet' in item) : []
-      ) ?? [];
-
       return (
         <MessageContent
           className={cn("text-[13px] leading-[1.65]", {
@@ -136,7 +143,9 @@ const PurePreviewMessage = ({
           data-testid="message-content"
           key={key}
         >
-          <MessageResponse citations={citations}>{sanitizeText(part.text)}</MessageResponse>
+          <MessageResponse citations={documentCitations}>
+            {sanitizeText(part.text)}
+          </MessageResponse>
         </MessageContent>
       );
     }
@@ -195,6 +204,28 @@ const PurePreviewMessage = ({
                 ))}
               </div>
             )}
+          </div>
+        );
+      }
+
+      if (state === "output-error") {
+        return (
+          <div
+            className="rounded-xl border border-red-200/50 bg-red-50/30 px-4 py-3 text-xs text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300"
+            key={toolCallId}
+          >
+            Không thể tra cứu tài liệu lúc này.
+          </div>
+        );
+      }
+
+      if (state === "output-denied") {
+        return (
+          <div
+            className="rounded-xl border border-amber-200/50 bg-amber-50/30 px-4 py-3 text-xs text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300"
+            key={toolCallId}
+          >
+            Yêu cầu tra cứu tài liệu đã bị từ chối.
           </div>
         );
       }

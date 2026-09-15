@@ -19,14 +19,16 @@ export function Citation({ id, source, snippet, index }: CitationProps) {
   return (
     <HoverCard openDelay={100} closeDelay={100}>
       <HoverCardTrigger asChild>
-        <sup
+        <a
+          aria-label={`Trích dẫn ${index}`}
           className={cn(
-            "mx-0.5 cursor-pointer rounded-sm bg-blue-100 px-1 text-[10px] font-bold text-blue-600 transition-all hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50",
+            "mx-0.5 cursor-pointer rounded-sm bg-blue-100 px-1 text-[10px] font-bold text-blue-600 no-underline transition-all hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50",
             "select-none border border-blue-200/50 dark:border-blue-800/50"
           )}
+          href={`#citation-${id}`}
         >
           {index}
-        </sup>
+        </a>
       </HoverCardTrigger>
       <HoverCardContent
         side="top"

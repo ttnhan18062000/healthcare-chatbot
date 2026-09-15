@@ -20,7 +20,6 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { remarkCitation } from "@/lib/ai/remark-citation";
 import { Citation } from "@/components/chat/citation";
 import {
   createContext,
@@ -327,17 +326,32 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown> & {
 const streamdownPlugins = { cjk, code, math, mermaid };
 
 export const MessageResponse = memo(
-  ({ className, citations = [], ...props }: MessageResponseProps) => {
-    const remarkPlugins = useMemo(() => [remarkCitation], []);
+  ({ className, citations = [], children, ...props }: MessageResponseProps) => {
+    const renderedChildren = useMemo(
+      () =>
+        typeof children === "string"
+          ? children.replace(/\[(\d+)\]/g, "[$1](#citation-$1)")
+          : children,
+      [children]
+    );
     const components = useMemo(() => ({
-      citation: (p: any) => {
-        const citation = citations.find(c => c.id === p.id);
+      a: ({ href, children: linkChildren, ...anchorProps }: any) => {
+        const citationId = href?.match(/^#citation-(\d+)$/)?.[1];
+        if (!citationId) {
+          return (
+            <a href={href} {...anchorProps}>
+              {linkChildren}
+            </a>
+          );
+        }
+
+        const citation = citations.find((item) => item.id === citationId);
         return (
-          <Citation 
-            id={p.id} 
-            index={parseInt(p.id)} 
-            source={citation?.source} 
-            snippet={citation?.snippet} 
+          <Citation
+            id={citationId}
+            index={Number.parseInt(citationId, 10)}
+            snippet={citation?.snippet}
+            source={citation?.source}
           />
         );
       }
@@ -350,10 +364,11 @@ export const MessageResponse = memo(
           className
         )}
         plugins={streamdownPlugins}
-        remarkPlugins={remarkPlugins}
         components={components}
         {...props}
-      />
+      >
+        {renderedChildren}
+      </Streamdown>
     );
   },
   (prevProps, nextProps) => 
