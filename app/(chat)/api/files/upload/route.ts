@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     });
 
     // 2. Add to Vector Store
-    await (openai as any).beta.vectorStores.files.create_and_poll(vectorStoreId, {
+    await openai.vectorStores.files.createAndPoll(vectorStoreId, {
       file_id: openaiFile.id,
     });
 

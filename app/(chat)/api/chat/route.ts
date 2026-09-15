@@ -17,11 +17,7 @@ import {
 
 import { ChatbotError } from "@/lib/errors";
 import { postRequestBodySchema, type PostRequestBody } from "./schema";
-import {
-  getOrCreateVectorStore,
-  getOrCreateAssistant,
-  openai as openaiClient,
-} from "@/lib/ai/assistant";
+import { openai as openaiClient } from "@/lib/ai/assistant";
 import { documentSearch } from "@/lib/ai/tools/document-search";
 import { ragScopeCheck } from "@/lib/ai/tools/rag-scope-check";
 import { openai } from "@ai-sdk/openai";
@@ -307,7 +303,20 @@ export async function POST(request: Request) {
       };
     }),
 
-    stopWhen: mode === "rag" ? stepCountIs(4) : stepCountIs(1),
+    stopWhen:
+      mode === "rag"
+        ? [
+            stepCountIs(4),
+            ({ steps }) =>
+              steps.some((step) =>
+                step.content.some(
+                  (part) =>
+                    part.type === "tool-error" &&
+                    part.toolName === "documentSearch"
+                )
+              ),
+          ]
+        : stepCountIs(1),
     tools: mode === "rag" ? {
       ragScopeCheck,
       documentSearch: documentSearch(),
